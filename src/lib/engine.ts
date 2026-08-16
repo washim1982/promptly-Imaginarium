@@ -11,6 +11,7 @@
 //  - Message.content is `string | { text?: string }[]`.
 
 import type { Conversation, Engine, Message } from '@litert-lm/core';
+import { ControlTokenFilter } from './controlTokens';
 
 // LiteRT-LM's default wasm path is a jsDelivr URL
 // (LiteRtLm.DEFAULT_WASM_PATH = https://cdn.jsdelivr.net/npm/@litert-lm/core@…/wasm).
@@ -115,14 +116,20 @@ export class LlmEngine {
     prompt: string,
   ): AsyncGenerator<string> {
     const reader = conversation.sendMessageStreaming(prompt).getReader();
+    // The runtime leaks vocabulary control tokens into the decoded text; strip
+    // them before anything reaches the UI. Stateful because a token can be split
+    // across two reads — see controlTokens.ts.
+    const filter = new ControlTokenFilter();
     this.generating = true;
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        const text = messageText(value);
+        const text = filter.push(messageText(value));
         if (text) yield text;
       }
+      const tail = filter.flush();
+      if (tail) yield tail;
     } finally {
       this.generating = false;
       reader.releaseLock();

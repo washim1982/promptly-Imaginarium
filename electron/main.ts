@@ -19,6 +19,7 @@ import {
   shell,
   protocol,
 } from 'electron';
+import { randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { Readable, Transform } from 'node:stream';
@@ -47,26 +48,75 @@ const SEARCH_API = process.env.ORIOSEARCH_URL ?? 'http://localhost:8005';
 // user picked from their own disk is never deleted, only forgotten.
 
 interface ModelEntry {
+  id: string;
+  label: string;
   path: string;
   name: string;
   size: number;
   managed: boolean;
-  linkedAt: number;
+  addedAt: number;
+  lastUsedAt: number | null;
 }
 
-type Registry = Record<string, ModelEntry>;
+interface Registry {
+  version: 2;
+  models: ModelEntry[];
+}
+
+/** v1 shape: one entry per hard-coded model slot, keyed by slot name. */
+type RegistryV1 = Record<
+  string,
+  { path: string; name: string; size: number; managed: boolean; linkedAt: number }
+>;
 
 const registryPath = () => path.join(app.getPath('userData'), 'models.json');
 const managedDir = () => path.join(app.getPath('userData'), 'models');
 
-let registry: Registry = {};
+let registry: Registry = { version: 2, models: [] };
+
+const labelFromFileName = (fileName: string) =>
+  fileName.replace(/\.litertlm$/i, '') || fileName;
+
+// Windows paths are case-insensitive, so compare case-folded when deduping.
+const samePath = (a: string, b: string) =>
+  path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
 async function loadRegistry(): Promise<void> {
+  let raw: unknown;
   try {
-    registry = JSON.parse(await readFile(registryPath(), 'utf8')) as Registry;
+    raw = JSON.parse(await readFile(registryPath(), 'utf8'));
   } catch {
-    registry = {}; // first run
+    registry = { version: 2, models: [] }; // first run
+    return;
   }
+
+  if (raw && typeof raw === 'object' && 'models' in raw) {
+    const parsed = raw as Registry;
+    registry = { version: 2, models: parsed.models ?? [] };
+    return;
+  }
+
+  // Migrate v1 → v2. The old file keyed entries by slot name ("gemma-4-E2B");
+  // each becomes an ordinary library entry, so an already-linked model survives
+  // the upgrade instead of silently disappearing.
+  const v1 = (raw ?? {}) as RegistryV1;
+  registry = {
+    version: 2,
+    models: Object.values(v1)
+      .filter((e) => e && typeof e.path === 'string')
+      .map((e) => ({
+        id: randomUUID(),
+        label: labelFromFileName(e.name ?? path.basename(e.path)),
+        path: e.path,
+        name: e.name ?? path.basename(e.path),
+        size: e.size ?? 0,
+        managed: Boolean(e.managed),
+        addedAt: e.linkedAt ?? Date.now(),
+        lastUsedAt: null,
+      })),
+  };
+  await saveRegistry();
+  console.log(`[imaginarium] migrated ${registry.models.length} model(s) to v2`);
 }
 
 async function saveRegistry(): Promise<void> {
@@ -80,7 +130,11 @@ async function saveRegistry(): Promise<void> {
 const MAGIC = 'LITERTLM';
 const MIN_MODEL_BYTES = 50 * 1024 * 1024;
 
-/** Validate a candidate model file without reading more than 8 bytes of it. */
+/**
+ * Validate a candidate model file without reading more than 8 bytes of it, and
+ * return the library entry it would become. Any .litertlm is accepted — the app
+ * has no notion of "supported" models beyond the format itself.
+ */
 async function inspectModel(filePath: string): Promise<ModelEntry> {
   const st = await stat(filePath);
   if (!st.isFile()) throw new Error(`${filePath} is not a file.`);
@@ -88,7 +142,7 @@ async function inspectModel(filePath: string): Promise<ModelEntry> {
   if (st.size < MIN_MODEL_BYTES) {
     const mb = (st.size / 1e6).toFixed(1);
     throw new Error(
-      `This file is only ${mb} MB — far too small to be a model (expected ~2 GB). ` +
+      `This file is only ${mb} MB — far too small to be a model. ` +
         'You probably saved a Hugging Face web page. Use the file’s download ' +
         'button on the repo’s "Files" tab (not the preview link), then choose it here.',
     );
@@ -108,9 +162,9 @@ async function inspectModel(filePath: string): Promise<ModelEntry> {
     const lower = magic.toLowerCase();
     if (lower.startsWith('<!doc') || lower.startsWith('<html') || lower.startsWith('<')) {
       throw new Error(
-        'That file is an HTML page, not a model. Gemma is gated — sign in to ' +
-          'Hugging Face and accept the license, then download the real ' +
-          '.litertlm (~2 GB) and choose it here.',
+        'That file is an HTML page, not a model. Gated repos return a login ' +
+          'page when you download signed out — accept the license, download the ' +
+          'real .litertlm, and add that.',
       );
     }
     throw new Error(
@@ -118,18 +172,42 @@ async function inspectModel(filePath: string): Promise<ModelEntry> {
     );
   }
 
+  const name = path.basename(filePath);
   return {
+    id: randomUUID(),
+    label: labelFromFileName(name),
     path: filePath,
-    name: path.basename(filePath),
+    name,
     size: st.size,
     managed: false,
-    linkedAt: Date.now(),
+    addedAt: Date.now(),
+    lastUsedAt: null,
   };
 }
 
-/** Registry entry for a model, re-checked against disk (files can move away). */
-async function linkedModel(modelId: string): Promise<ModelEntry | null> {
-  const entry = registry[modelId];
+/**
+ * Validate a file and put it in the library. Adding a path that's already there
+ * refreshes it in place rather than creating a duplicate entry.
+ */
+async function addModel(filePath: string, managed = false): Promise<ModelEntry> {
+  const candidate = await inspectModel(filePath);
+  const existing = registry.models.find((m) => samePath(m.path, filePath));
+  if (existing) {
+    existing.size = candidate.size;
+    existing.name = candidate.name;
+    existing.managed = existing.managed || managed;
+    await saveRegistry();
+    return existing;
+  }
+  candidate.managed = managed;
+  registry.models.push(candidate);
+  await saveRegistry();
+  return candidate;
+}
+
+/** A library entry, re-checked against disk — files can be moved or deleted. */
+async function getModel(id: string): Promise<ModelEntry | null> {
+  const entry = registry.models.find((m) => m.id === id);
   if (!entry) return null;
   try {
     const st = await stat(entry.path);
@@ -140,19 +218,58 @@ async function linkedModel(modelId: string): Promise<ModelEntry | null> {
     }
     return entry;
   } catch {
-    delete registry[modelId]; // file was moved or deleted since we linked it
+    // The file went away. Drop the entry so the UI stops offering it.
+    registry.models = registry.models.filter((m) => m.id !== id);
     await saveRegistry();
     return null;
   }
 }
 
-async function unlinkModel(modelId: string): Promise<void> {
-  const entry = registry[modelId];
+/** Every entry, with dead ones pruned. */
+async function listModels(): Promise<ModelEntry[]> {
+  const alive: ModelEntry[] = [];
+  let changed = false;
+  for (const entry of registry.models) {
+    const st = await stat(entry.path).catch(() => null);
+    if (st?.isFile()) {
+      if (st.size !== entry.size) {
+        entry.size = st.size;
+        changed = true;
+      }
+      alive.push(entry);
+    } else {
+      changed = true;
+    }
+  }
+  if (changed) {
+    registry.models = alive;
+    await saveRegistry();
+  }
+  return alive;
+}
+
+async function removeModel(id: string): Promise<void> {
+  const entry = registry.models.find((m) => m.id === id);
   if (!entry) return;
-  delete registry[modelId];
+  registry.models = registry.models.filter((m) => m.id !== id);
   await saveRegistry();
   // Only remove files we downloaded ourselves — never the user's own file.
   if (entry.managed) await rm(entry.path, { force: true });
+}
+
+async function renameModel(id: string, label: string): Promise<ModelEntry | null> {
+  const entry = registry.models.find((m) => m.id === id);
+  if (!entry) return null;
+  entry.label = label.trim() || labelFromFileName(entry.name);
+  await saveRegistry();
+  return entry;
+}
+
+async function touchModel(id: string): Promise<void> {
+  const entry = registry.models.find((m) => m.id === id);
+  if (!entry) return;
+  entry.lastUsedAt = Date.now();
+  await saveRegistry();
 }
 
 // ---------------------------------------------------------------------------
@@ -247,13 +364,14 @@ const MODEL_HEADERS: Record<string, string> = {
 
 async function serveModel(url: URL): Promise<Response> {
   const modelId = decodeURIComponent(url.pathname.replace(/^\/model\/?/, ''));
-  const entry = await linkedModel(modelId);
+  const entry = await getModel(modelId);
   if (!entry) {
-    return new Response(`No model file is linked for "${modelId}".`, {
-      status: 404,
-      headers: MODEL_HEADERS,
-    });
+    return new Response(
+      'That model is no longer in the library — the file may have been moved or deleted.',
+      { status: 404, headers: MODEL_HEADERS },
+    );
   }
+  void touchModel(entry.id); // most-recently-used ordering in the picker
   return fileResponse(entry.path, entry.size, MODEL_HEADERS);
 }
 
@@ -325,7 +443,6 @@ function registerProtocol(): void {
 let downloadAbort: AbortController | null = null;
 
 async function downloadModel(
-  modelId: string,
   url: string,
   fileName: string,
   onProgress: (received: number, total: number | null) => void,
@@ -339,8 +456,8 @@ async function downloadModel(
     const res = await fetch(url, { signal: downloadAbort.signal });
     if (!res.ok || !res.body) {
       throw new Error(
-        `Failed to download ${fileName} (HTTP ${res.status}). Gemma repos are ` +
-          'gated — use "Browse for a .litertlm file" instead.',
+        `Failed to download ${fileName} (HTTP ${res.status}). Gated repos need ` +
+          'you to be signed in — download it in a browser and add the file instead.',
       );
     }
     const totalHeader = res.headers.get('content-length');
@@ -372,23 +489,16 @@ async function downloadModel(
       createWriteStream(partPath),
     );
 
-    const entry = await inspectModel(partPath).catch(async (err) => {
-      await rm(partPath, { force: true }); // never keep an HTML error page
+    // Validate before the rename so a gated-repo login page is discarded as a
+    // .part file rather than landing in the models directory.
+    await inspectModel(partPath).catch(async (err) => {
+      await rm(partPath, { force: true });
       throw err;
     });
 
     await rm(finalPath, { force: true });
     await rename(partPath, finalPath);
-
-    registry[modelId] = {
-      ...entry,
-      path: finalPath,
-      name: fileName,
-      managed: true,
-      linkedAt: Date.now(),
-    };
-    await saveRegistry();
-    return registry[modelId];
+    return await addModel(finalPath, true);
   } catch (err) {
     await rm(partPath, { force: true });
     // Electron flattens errors across IPC, so the `AbortError` name is lost —
@@ -423,45 +533,57 @@ function registerIpc(): void {
     await shell.openExternal(url);
   });
 
-  ipcMain.handle('model:linked', (_e, modelId: string) => linkedModel(modelId));
+  ipcMain.handle('model:list', () => listModels());
+  ipcMain.handle('model:get', (_e, id: string) => getModel(id));
+  ipcMain.handle('model:remove', (_e, id: string) => removeModel(id));
+  ipcMain.handle('model:rename', (_e, id: string, label: string) =>
+    renameModel(id, label),
+  );
 
-  ipcMain.handle('model:browse', async (event, modelId: string) => {
+  /**
+   * Native picker. Multi-select, because adding a folder of models one dialog at
+   * a time is tedious — each file is validated on its own so one bad pick does
+   * not throw away the good ones.
+   */
+  ipcMain.handle('model:add', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win!, {
-      title: `Choose the ${modelId} model file`,
-      buttonLabel: 'Use this model',
-      properties: ['openFile', 'dontAddToRecent'],
+      title: 'Add LiteRT-LM models',
+      buttonLabel: 'Add to library',
+      properties: ['openFile', 'multiSelections', 'dontAddToRecent'],
       filters: [
         { name: 'LiteRT-LM model', extensions: ['litertlm'] },
         { name: 'All files', extensions: ['*'] },
       ],
     });
-    if (result.canceled || !result.filePaths[0]) return null;
+    if (result.canceled) return { added: [], rejected: [] };
 
-    const entry = await inspectModel(result.filePaths[0]);
-    registry[modelId] = entry;
-    await saveRegistry();
-    return entry;
+    const added: ModelEntry[] = [];
+    const rejected: { name: string; reason: string }[] = [];
+    for (const filePath of result.filePaths) {
+      try {
+        added.push(await addModel(filePath));
+      } catch (err) {
+        rejected.push({
+          name: path.basename(filePath),
+          reason: (err as Error).message,
+        });
+      }
+    }
+    return { added, rejected };
   });
 
-  ipcMain.handle('model:unlink', (_e, modelId: string) => unlinkModel(modelId));
-
-  ipcMain.handle('model:revealInFolder', async (_e, modelId: string) => {
-    const entry = await linkedModel(modelId);
+  ipcMain.handle('model:revealInFolder', async (_e, id: string) => {
+    const entry = await getModel(id);
     if (entry) shell.showItemInFolder(entry.path);
   });
 
   ipcMain.handle(
     'model:download',
-    async (
-      event,
-      modelId: string,
-      url: string,
-      fileName: string,
-    ): Promise<ModelEntry> =>
-      downloadModel(modelId, url, fileName, (received, total) => {
+    async (event, url: string, fileName: string): Promise<ModelEntry> =>
+      downloadModel(url, fileName, (received, total) => {
         if (!event.sender.isDestroyed()) {
-          event.sender.send('model:downloadProgress', { modelId, received, total });
+          event.sender.send('model:downloadProgress', { received, total });
         }
       }),
   );
@@ -473,7 +595,7 @@ function registerIpc(): void {
   ipcMain.handle('storage:usage', async () => {
     // How much disk the app is responsible for = the models it downloaded.
     let bytes = 0;
-    for (const entry of Object.values(registry)) {
+    for (const entry of registry.models) {
       if (entry.managed) bytes += entry.size;
     }
     return { managedBytes: bytes, directory: managedDir() };

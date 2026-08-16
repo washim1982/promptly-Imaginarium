@@ -1,23 +1,22 @@
-// Model file management for the desktop build.
+// The model library, from the renderer's side.
 //
 // This replaces the browser build's OPFS cache. There, a ~2 GB .litertlm had to
-// be copied byte-for-byte into origin-private storage before it could be used —
-// a long wait and a permanent duplicate of a file the user already had. Here we
-// only remember the *path*, and stream the file off disk on demand:
+// be copied byte-for-byte into origin-private storage before it could be used,
+// which is why that build could only justify two fixed model slots. Here the app
+// only remembers paths, so the library is open-ended — any .litertlm the user
+// browses to is a first-class model — and the file is streamed off disk:
 //
-//   linkedModel(spec)             -> the registered file, or null
-//   browseForModel(spec)          -> native picker, validates + registers
-//   downloadModel(spec, onProg)   -> streams Hugging Face -> userData -> registers
-//   openModelStream(spec, onProg) -> ReadableStream fed straight to the engine
-//   unlinkModel(spec)
+//   listModels()                  -> everything in the library
+//   addModels()                   -> native multi-select picker, validates each
+//   removeModel / renameModel / revealModel
+//   downloadModel(url, file, cb)  -> Hugging Face -> userData -> library entry
+//   openModelStream(entry, cb)    -> ReadableStream fed straight to the engine
 //
-// Validation (the "LITERTLM" magic + minimum size) happens in the main process,
-// which can check the first 8 bytes without reading the whole file.
+// Validation (the "LITERTLM" magic + a minimum size) happens in the main
+// process, which can check the first 8 bytes without reading the whole file.
 
-import { requireDesktop, type LinkedModel } from './desktop';
-import type { ModelSpec } from './models';
-
-export type { LinkedModel };
+import { requireDesktop } from './desktop';
+import type { AddResult, ModelEntry } from './models';
 
 export interface LoadProgress {
   receivedBytes: number;
@@ -25,44 +24,54 @@ export interface LoadProgress {
   ratio: number | null; // 0..1, or null when the total is unknown
 }
 
-export function linkedModel(spec: ModelSpec): Promise<LinkedModel | null> {
-  return requireDesktop().linkedModel(spec.id);
+export function listModels(): Promise<ModelEntry[]> {
+  return requireDesktop().listModels();
 }
 
-export function browseForModel(spec: ModelSpec): Promise<LinkedModel | null> {
-  return requireDesktop().browseModel(spec.id);
+export function getModel(id: string): Promise<ModelEntry | null> {
+  return requireDesktop().getModel(id);
 }
 
-export function unlinkModel(spec: ModelSpec): Promise<void> {
-  return requireDesktop().unlinkModel(spec.id);
+/** Open the native picker. Returns what was added and what was rejected. */
+export function addModels(): Promise<AddResult> {
+  return requireDesktop().addModels();
 }
 
-export function revealModel(spec: ModelSpec): Promise<void> {
-  return requireDesktop().revealModel(spec.id);
+export function removeModel(id: string): Promise<void> {
+  return requireDesktop().removeModel(id);
+}
+
+export function renameModel(id: string, label: string): Promise<ModelEntry | null> {
+  return requireDesktop().renameModel(id, label);
+}
+
+export function revealModel(id: string): Promise<void> {
+  return requireDesktop().revealModel(id);
 }
 
 /**
- * Download the model from Hugging Face. Unlike the browser build (which
+ * Download a suggested model from Hugging Face. Unlike the browser build (which
  * buffered the whole response in memory), the main process streams it directly
  * to a .part file and renames on success, so a cancel leaves nothing behind.
+ * The result is an ordinary library entry.
  */
 export async function downloadModel(
-  spec: ModelSpec,
+  url: string,
+  fileName: string,
   onProgress?: (p: LoadProgress) => void,
-): Promise<LinkedModel> {
+): Promise<ModelEntry> {
   const bridge = requireDesktop();
   const off = onProgress
-    ? bridge.onDownloadProgress((tick) => {
-        if (tick.modelId !== spec.id) return;
+    ? bridge.onDownloadProgress((tick) =>
         onProgress({
           receivedBytes: tick.received,
           totalBytes: tick.total,
           ratio: tick.total ? tick.received / tick.total : null,
-        });
-      })
+        }),
+      )
     : () => {};
   try {
-    return await bridge.downloadModel(spec.id, spec.url, spec.file);
+    return await bridge.downloadModel(url, fileName);
   } finally {
     off();
   }
@@ -73,18 +82,18 @@ export function cancelDownload(): Promise<void> {
 }
 
 /**
- * Open the linked model file as a stream for `Engine.create`.
+ * Open a library model as a stream for `Engine.create`.
  *
  * The engine consumes a `ReadableStream<Uint8Array>`, so the bytes flow
  * disk -> main process -> wasm heap without ever materialising as a Blob. The
  * pass-through transform only counts bytes for the progress bar.
  */
 export async function openModelStream(
-  spec: ModelSpec,
+  id: string,
   onProgress?: (p: LoadProgress) => void,
 ): Promise<ReadableStream<Uint8Array>> {
   const bridge = requireDesktop();
-  const res = await fetch(bridge.modelStreamUrl(spec.id), { cache: 'no-store' });
+  const res = await fetch(bridge.modelStreamUrl(id), { cache: 'no-store' });
   if (!res.ok || !res.body) {
     throw new Error(
       (await res.text().catch(() => '')) ||

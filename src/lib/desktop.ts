@@ -1,18 +1,9 @@
 // Typed view of the preload bridge (electron/preload.ts). Everything the
 // renderer can ask the main process to do goes through here.
 
-export interface LinkedModel {
-  /** Absolute path on disk. Shown in the UI so the user knows what's loaded. */
-  path: string;
-  name: string;
-  size: number;
-  /** True if this app downloaded the file into userData (so it may delete it). */
-  managed: boolean;
-  linkedAt: number;
-}
+import type { AddResult, ModelEntry } from './models';
 
 export interface DownloadTick {
-  modelId: string;
   received: number;
   total: number | null;
 }
@@ -29,16 +20,14 @@ export interface DesktopBridge {
   isDesktop: true;
   info(): Promise<AppInfo>;
   openExternal(url: string): Promise<void>;
-  modelStreamUrl(modelId: string): string;
-  linkedModel(modelId: string): Promise<LinkedModel | null>;
-  browseModel(modelId: string): Promise<LinkedModel | null>;
-  unlinkModel(modelId: string): Promise<void>;
-  revealModel(modelId: string): Promise<void>;
-  downloadModel(
-    modelId: string,
-    url: string,
-    fileName: string,
-  ): Promise<LinkedModel>;
+  modelStreamUrl(id: string): string;
+  listModels(): Promise<ModelEntry[]>;
+  getModel(id: string): Promise<ModelEntry | null>;
+  addModels(): Promise<AddResult>;
+  removeModel(id: string): Promise<void>;
+  renameModel(id: string, label: string): Promise<ModelEntry | null>;
+  revealModel(id: string): Promise<void>;
+  downloadModel(url: string, fileName: string): Promise<ModelEntry>;
   cancelDownload(): Promise<void>;
   onDownloadProgress(fn: (tick: DownloadTick) => void): () => void;
   storageUsage(): Promise<{ managedBytes: number; directory: string }>;

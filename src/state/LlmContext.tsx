@@ -20,25 +20,26 @@ import {
   type ConversationMeta,
 } from '../lib/history';
 import {
-  browseForModel,
+  addModels as pickModels,
   cancelDownload,
   downloadModel,
-  linkedModel as getLinkedModel,
+  listModels,
   openModelStream,
-  unlinkModel,
-  type LinkedModel,
+  removeModel as dropModel,
+  renameModel as setModelLabel,
   type LoadProgress,
 } from '../lib/modelStore';
 import {
-  DEFAULT_MODEL_ID,
-  MODELS,
-  type ModelId,
-  type ModelSpec,
+  sortModels,
+  type AddResult,
+  type ModelEntry,
+  type ModelSuggestion,
 } from '../lib/models';
 import type { ChatWidth } from '../lib/ui';
 import { DEFAULT_THEME_ID, resolveAccent } from '../lib/themes';
 import { webSearch, formatSearchForChat, type SearchResult } from '../lib/search';
 import { cleanError, isCancellation } from '../lib/desktop';
+import { stripControlTokens } from '../lib/controlTokens';
 
 export type EngineStatus =
   | 'checking-gpu'
@@ -63,21 +64,25 @@ export interface ChatMessage {
 }
 
 export type ModelSource =
-  /** Use the file already registered for this model. */
-  | { type: 'linked' }
-  /** Open the native file picker, then use whatever the user chooses. */
-  | { type: 'browse' }
-  /** Download from Hugging Face into the app's own model directory. */
-  | { type: 'download' };
+  /** Load a model already in the library (defaults to the active one). */
+  | { type: 'library'; id?: string }
+  /** Open the native picker, add whatever is chosen, then load the first one. */
+  | { type: 'add' }
+  /** Download a suggested model, add it to the library, then load it. */
+  | { type: 'download'; suggestion: ModelSuggestion };
 
 interface LlmState {
   gpu: GpuSupport | null;
   status: EngineStatus;
   error: string | null;
   progress: LoadProgress | null;
-  activeModelId: ModelId;
-  /** The .litertlm file backing the active model, if one is registered. */
-  linked: LinkedModel | null;
+  /** Every .litertlm the user has added, most-recently-used first. */
+  models: ModelEntry[];
+  activeModelId: string | null;
+  /** The library entry currently selected, if any. */
+  activeModel: ModelEntry | null;
+  /** Files rejected by the last add, so the UI can explain why. */
+  rejected: AddResult['rejected'];
   settings: EngineConfig;
   chatWidth: ChatWidth;
   theme: string;
@@ -92,13 +97,15 @@ interface LlmState {
   setChatWidth: (w: ChatWidth) => void;
   setTheme: (id: string) => void;
   setCustomGlow: (hex: string | null) => void;
-  setActiveModel: (id: ModelId) => void;
+  setActiveModel: (id: string) => void;
   setWebSearchEnabled: (on: boolean) => void;
   loadModel: (source: ModelSource) => Promise<void>;
-  /** The registered file for a model, re-checked against disk. */
-  modelFile: (id: ModelId) => Promise<LinkedModel | null>;
-  /** Forget a model file. Downloaded copies are deleted; user files are not. */
-  forgetModel: (id: ModelId) => Promise<void>;
+  /** Open the native picker and add the chosen .litertlm files to the library. */
+  addModels: () => Promise<AddResult>;
+  /** Remove from the library. Downloaded copies are deleted; user files are not. */
+  removeModel: (id: string) => Promise<void>;
+  renameModel: (id: string, label: string) => Promise<void>;
+  dismissRejected: () => void;
   updateSettings: (next: Partial<EngineConfig>) => Promise<void>;
   send: (text: string) => Promise<void>;
   /** One-shot streaming generation in an isolated conversation (for tools). */
@@ -159,10 +166,11 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<EngineStatus>('checking-gpu');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<LoadProgress | null>(null);
-  const [linked, setLinked] = useState<LinkedModel | null>(null);
-  const [activeModelId, setActiveModelId] = useState<ModelId>(
-    (localStorage.getItem(MODEL_KEY) as ModelId) || DEFAULT_MODEL_ID,
+  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [activeModelId, setActiveModelId] = useState<string | null>(
+    localStorage.getItem(MODEL_KEY),
   );
+  const [rejected, setRejected] = useState<AddResult['rejected']>([]);
   const [settings, setSettings] = useState<EngineConfig>(loadSettings);
   const [chatWidth, setChatWidthState] = useState<ChatWidth>(
     (localStorage.getItem(CHAT_WIDTH_KEY) as ChatWidth) || 'standard',
@@ -227,7 +235,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }, [settings]);
   useEffect(() => {
-    localStorage.setItem(MODEL_KEY, activeModelId);
+    if (activeModelId) localStorage.setItem(MODEL_KEY, activeModelId);
+    else localStorage.removeItem(MODEL_KEY);
   }, [activeModelId]);
   useEffect(() => {
     localStorage.setItem(CHAT_WIDTH_KEY, chatWidth);
@@ -261,45 +270,68 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const modelFile = useCallback(
-    (id: ModelId) => getLinkedModel(MODELS[id]),
-    [],
-  );
+  /**
+   * Re-read the library from the main process. It prunes entries whose files
+   * have been moved or deleted, so this also keeps the active selection honest:
+   * if the active model vanished, fall back to the first one left.
+   */
+  const refreshModels = useCallback(async (): Promise<ModelEntry[]> => {
+    const list = sortModels(await listModels());
+    setModels(list);
+    setActiveModelId((current) => {
+      if (current && list.some((m) => m.id === current)) return current;
+      return list[0]?.id ?? null;
+    });
+    return list;
+  }, []);
 
-  const forgetModel = useCallback(
-    async (id: ModelId) => {
-      await unlinkModel(MODELS[id]);
-      if (id === activeModelId) {
-        setLinked(null);
-        if (status === 'ready') {
-          await engineRef.current?.dispose();
-          engineRef.current = null;
-          setStatus('idle');
-        }
-      }
-    },
-    [activeModelId, status],
-  );
-
-  // Track which file backs the active model so the loader and settings panel can
-  // show its real path instead of a vague "cached" flag.
   useEffect(() => {
-    let active = true;
-    getLinkedModel(MODELS[activeModelId])
-      .then((entry) => {
-        if (active) setLinked(entry);
-      })
-      .catch(() => {
-        if (active) setLinked(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [activeModelId, status]);
+    void refreshModels().catch(() => setModels([]));
+  }, [refreshModels]);
 
-  const setActiveModel = useCallback((id: ModelId) => {
+  const addModels = useCallback(async (): Promise<AddResult> => {
+    const result = await pickModels();
+    setRejected(result.rejected);
+    if (result.added.length) {
+      await refreshModels();
+      // Select what was just added — it's almost certainly what the user wants.
+      setActiveModelId(result.added[0].id);
+    }
+    return result;
+  }, [refreshModels]);
+
+  const removeModel = useCallback(
+    async (id: string) => {
+      await dropModel(id);
+      // Unload the engine if the model backing it just left the library.
+      if (id === activeModelId && status === 'ready') {
+        await engineRef.current?.dispose();
+        engineRef.current = null;
+        setStatus('idle');
+      }
+      await refreshModels();
+    },
+    [activeModelId, status, refreshModels],
+  );
+
+  const renameModel = useCallback(
+    async (id: string, label: string) => {
+      await setModelLabel(id, label);
+      await refreshModels();
+    },
+    [refreshModels],
+  );
+
+  const dismissRejected = useCallback(() => setRejected([]), []);
+
+  const setActiveModel = useCallback((id: string) => {
     setActiveModelId(id);
   }, []);
+
+  const activeModel = useMemo(
+    () => models.find((m) => m.id === activeModelId) ?? null,
+    [models, activeModelId],
+  );
 
   const setWebSearchEnabled = useCallback((on: boolean) => {
     setWebSearchEnabledState(on);
@@ -320,39 +352,51 @@ export function LlmProvider({ children }: { children: ReactNode }) {
 
   const loadModel = useCallback(
     async (source: ModelSource) => {
-      const spec: ModelSpec = MODELS[activeModelId];
       setError(null);
       try {
-        // 1. Make sure a real file on disk is registered for this model.
-        let entry: LinkedModel | null;
-        if (source.type === 'browse') {
-          entry = await browseForModel(spec);
-          if (!entry) return; // user cancelled the picker — stay where we were
-          setLinked(entry);
+        // 1. Settle on a library entry to load.
+        let entry: ModelEntry | undefined;
+        if (source.type === 'add') {
+          const result = await pickModels();
+          setRejected(result.rejected);
+          if (!result.added.length) {
+            // Nothing usable was chosen. If everything was rejected the UI shows
+            // why; if the dialog was cancelled, just stay put.
+            await refreshModels();
+            return;
+          }
+          entry = result.added[0];
         } else if (source.type === 'download') {
           setStatus('downloading');
           setProgress({ receivedBytes: 0, totalBytes: null, ratio: 0 });
-          entry = await downloadModel(spec, setProgress);
-          setLinked(entry);
+          entry = await downloadModel(
+            source.suggestion.url,
+            source.suggestion.file,
+            setProgress,
+          );
         } else {
-          entry = await getLinkedModel(spec);
+          const wanted = source.id ?? activeModelId;
+          const list = await refreshModels();
+          entry = list.find((m) => m.id === wanted) ?? undefined;
           if (!entry) {
             throw new Error(
-              'No model file is linked yet. Choose a .litertlm file to get started.',
+              'That model is no longer available. Add a .litertlm file to get started.',
             );
           }
-          setLinked(entry);
         }
+
+        setActiveModelId(entry.id);
+        if (source.type !== 'library') await refreshModels();
 
         // 2. Stream it into the WebGPU engine. Nothing is copied: the bytes go
         //    from disk through the app:// handler straight into the wasm heap.
         setStatus('reading');
         setProgress({ receivedBytes: 0, totalBytes: entry.size, ratio: 0 });
-        const stream = await openModelStream(spec, setProgress);
+        const stream = await openModelStream(entry.id, setProgress);
 
         setStatus('initializing');
         await engineRef.current?.dispose();
-        const engine = new LlmEngine(spec.label, settings);
+        const engine = new LlmEngine(entry.label, settings);
         await engine.init(stream);
         engineRef.current = engine;
         setProgress(null);
@@ -368,7 +412,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         setStatus('error');
       }
     },
-    [activeModelId, settings],
+    [activeModelId, settings, refreshModels],
   );
 
   const updateSettings = useCallback(
@@ -556,7 +600,12 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const loadConversation = useCallback(async (id: string) => {
     const conv = await getConversation(id);
     if (!conv) return;
-    const msgs: ChatMessage[] = conv.messages.map((m) => ({ ...m }));
+    // Transcripts saved before control-token filtering existed still contain the
+    // raw `<image|>` noise, so clean them on the way out of storage too.
+    const msgs: ChatMessage[] = conv.messages.map((m) => ({
+      ...m,
+      text: stripControlTokens(m.text),
+    }));
     setMessages(msgs);
     setActiveConversationId(id);
     activeIdRef.current = id;
@@ -604,8 +653,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       status,
       error,
       progress,
+      models,
       activeModelId,
-      linked,
+      activeModel,
+      rejected,
       settings,
       chatWidth,
       theme,
@@ -621,8 +672,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       setActiveModel,
       setWebSearchEnabled,
       loadModel,
-      modelFile,
-      forgetModel,
+      addModels,
+      removeModel,
+      renameModel,
+      dismissRejected,
       updateSettings,
       send,
       generate,
@@ -639,8 +692,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       status,
       error,
       progress,
+      models,
       activeModelId,
-      linked,
+      activeModel,
+      rejected,
       settings,
       chatWidth,
       theme,
@@ -656,8 +711,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       setActiveModel,
       setWebSearchEnabled,
       loadModel,
-      modelFile,
-      forgetModel,
+      addModels,
+      removeModel,
+      renameModel,
+      dismissRejected,
       updateSettings,
       send,
       generate,

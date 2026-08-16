@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useLlm } from '../state/LlmContext';
-import { MODELS } from '../lib/models';
 import {
   runDeepResearch,
   AGENT_META,
@@ -27,7 +26,7 @@ const VERDICT_STYLE: Record<CriticVerdict, string> = {
 };
 
 export default function Research() {
-  const { status, generate, cancel, gpu, activeModelId } = useLlm();
+  const { status, generate, cancel, gpu, activeModel } = useLlm();
 
   const [topic, setTopic] = useState('');
   const [running, setRunning] = useState(false);
@@ -286,7 +285,7 @@ export default function Research() {
             <span
               className={`h-1.5 w-1.5 rounded-full ${running ? 'animate-pulse bg-[var(--color-neon)]' : 'bg-white/30'}`}
             />
-            {MODELS[activeModelId].label} · {maxRevisions} revision{maxRevisions === 1 ? '' : 's'}
+            {activeModel?.label ?? 'no model'} · {maxRevisions} revision{maxRevisions === 1 ? '' : 's'}
             {webSearchEnabled && ' · web ✓'}
             {todos.length > 0 && ` · ${doneCount}/${todos.length} tasks`}
           </span>

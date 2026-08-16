@@ -1,19 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLlm } from '../state/LlmContext';
-import { MODEL_LIST, type ModelId } from '../lib/models';
 import { CHAT_WIDTHS } from '../lib/ui';
 import { THEMES, isValidHex, resolveAccent } from '../lib/themes';
-import { formatBytes, shortenPath, type LinkedModel } from '../lib/desktop';
+import { desktop, formatBytes, shortenPath } from '../lib/desktop';
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const {
+    models,
     activeModelId,
     setActiveModel,
     settings,
     updateSettings,
-    modelFile,
-    forgetModel,
-    status,
+    addModels,
+    removeModel,
+    renameModel,
     chatWidth,
     setChatWidth,
     theme,
@@ -25,22 +25,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [temp, setTemp] = useState(settings.temperature);
   const [maxTokens, setMaxTokens] = useState(settings.maxNumTokens);
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
-  const [files, setFiles] = useState<Record<string, LinkedModel | null>>({});
   const [glowText, setGlowText] = useState(
     customGlow ?? resolveAccent(theme, null),
   );
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const out: Record<string, LinkedModel | null> = {};
-      for (const m of MODEL_LIST) out[m.id] = await modelFile(m.id);
-      if (active) setFiles(out);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [modelFile, status]);
 
   return (
     <div
@@ -61,72 +48,105 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Model selection */}
+        {/* Model library — any number of .litertlm files, added by browsing. */}
         <section className="mb-7">
-          <h3 className="mono mb-3 text-[11px] text-white/40">Model</h3>
-          <div className="space-y-2">
-            {MODEL_LIST.map((m) => (
-              <label
-                key={m.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
-                  activeModelId === m.id
-                    ? 'border-[var(--color-neon)]/60 bg-[var(--color-neon)]/10'
-                    : 'border-white/10 hover:bg-white/5'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="model"
-                  checked={activeModelId === m.id}
-                  onChange={() => setActiveModel(m.id as ModelId)}
-                  className="mt-1 accent-[var(--color-neon)]"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-white">
-                      {m.label}
-                      {m.default && (
-                        <span className="mono ml-2 text-[9px] text-[var(--color-teal)]">
-                          default
-                        </span>
-                      )}
-                    </span>
-                    <span className="mono text-[10px] text-white/40">
-                      ~{m.approxSizeGB} GB
-                    </span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-white/45">{m.description}</p>
-                  {files[m.id] && (
-                    <div className="mt-2">
-                      <p
-                        className="mono truncate text-[10px] text-white/35"
-                        title={files[m.id]!.path}
-                      >
-                        {shortenPath(files[m.id]!.path)} ·{' '}
-                        {formatBytes(files[m.id]!.size)}
-                      </p>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          void forgetModel(m.id as ModelId).then(() =>
-                            setFiles((s) => ({ ...s, [m.id]: null })),
-                          );
-                        }}
-                        title={
-                          files[m.id]!.managed
-                            ? 'Deletes the copy this app downloaded'
-                            : 'Forgets the link — your file is left untouched'
-                        }
-                        className="mono mt-1 text-[10px] text-white/40 underline hover:text-red-300"
-                      >
-                        {files[m.id]!.managed ? 'downloaded · delete' : 'linked · forget'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </label>
-            ))}
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="mono text-[11px] text-white/40">
+              Model library ({models.length})
+            </h3>
+            <button
+              onClick={() => void addModels()}
+              className="mono rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/60 transition hover:bg-white/10 hover:text-white"
+            >
+              ＋ Add model…
+            </button>
           </div>
+
+          {models.length === 0 ? (
+            <p className="mono rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-[10px] leading-relaxed text-white/30">
+              No models yet. Add any LiteRT-LM
+              <br />
+              <span className="text-white/45">.litertlm</span> file to get started.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {models.map((m) => {
+                const active = activeModelId === m.id;
+                return (
+                  <label
+                    key={m.id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition ${
+                      active
+                        ? 'border-[var(--color-neon)]/60 bg-[var(--color-neon)]/10'
+                        : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="model"
+                      checked={active}
+                      onChange={() => setActiveModel(m.id)}
+                      className="mt-1 accent-[var(--color-neon)]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-white">
+                          {m.label}
+                        </span>
+                        <span className="mono shrink-0 text-[10px] text-white/40">
+                          {formatBytes(m.size)}
+                        </span>
+                      </div>
+                      <p
+                        className="mono mt-0.5 truncate text-[10px] text-white/35"
+                        title={m.path}
+                      >
+                        {shortenPath(m.path)}
+                      </p>
+                      <div className="mono mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-white/40">
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const next = window.prompt('Rename model', m.label);
+                            if (next != null) void renameModel(m.id, next);
+                          }}
+                          className="underline hover:text-white"
+                        >
+                          rename
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void desktop?.revealModel(m.id);
+                          }}
+                          className="underline hover:text-white"
+                        >
+                          show in folder
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const warning = m.managed
+                              ? `Delete "${m.label}"? This app downloaded it, so the file will be deleted from disk.`
+                              : `Remove "${m.label}" from the library? Your file stays where it is.`;
+                            if (window.confirm(warning)) void removeModel(m.id);
+                          }}
+                          title={
+                            m.managed
+                              ? 'Deletes the copy this app downloaded'
+                              : 'Removes it from the list — your file is left untouched'
+                          }
+                          className="underline hover:text-red-300"
+                        >
+                          {m.managed ? 'delete' : 'remove'}
+                        </button>
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* Workspace display */}

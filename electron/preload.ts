@@ -1,19 +1,26 @@
 // Preload — the only surface the renderer gets onto the main process.
-// Deliberately narrow: model file management, app info, and opening external
+// Deliberately narrow: model library management, app info, and opening external
 // links. No filesystem access, no arbitrary IPC.
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-export interface LinkedModel {
+export interface ModelEntry {
+  id: string;
+  label: string;
   path: string;
   name: string;
   size: number;
   managed: boolean;
-  linkedAt: number;
+  addedAt: number;
+  lastUsedAt: number | null;
+}
+
+export interface AddResult {
+  added: ModelEntry[];
+  rejected: { name: string; reason: string }[];
 }
 
 export interface DownloadTick {
-  modelId: string;
   received: number;
   total: number | null;
 }
@@ -33,31 +40,32 @@ const bridge = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('app:openExternal', url),
 
-  /** URL the renderer fetches to stream the linked model file off disk. */
-  modelStreamUrl: (modelId: string): string =>
-    `app://imaginarium/model/${encodeURIComponent(modelId)}`,
+  /** URL the renderer fetches to stream a library model off disk. */
+  modelStreamUrl: (id: string): string =>
+    `app://imaginarium/model/${encodeURIComponent(id)}`,
 
-  /** The registered file for this model, or null if none / it moved away. */
-  linkedModel: (modelId: string): Promise<LinkedModel | null> =>
-    ipcRenderer.invoke('model:linked', modelId),
+  /** Every model in the library, with entries whose files vanished pruned. */
+  listModels: (): Promise<ModelEntry[]> => ipcRenderer.invoke('model:list'),
 
-  /** Native file picker. Validates the file and registers it. */
-  browseModel: (modelId: string): Promise<LinkedModel | null> =>
-    ipcRenderer.invoke('model:browse', modelId),
+  getModel: (id: string): Promise<ModelEntry | null> =>
+    ipcRenderer.invoke('model:get', id),
 
-  /** Forget the model. Downloaded files are deleted; user files never are. */
-  unlinkModel: (modelId: string): Promise<void> =>
-    ipcRenderer.invoke('model:unlink', modelId),
+  /** Native multi-select picker. Each file is validated independently. */
+  addModels: (): Promise<AddResult> => ipcRenderer.invoke('model:add'),
 
-  revealModel: (modelId: string): Promise<void> =>
-    ipcRenderer.invoke('model:revealInFolder', modelId),
+  /** Remove from the library. Downloaded files are deleted; user files are not. */
+  removeModel: (id: string): Promise<void> =>
+    ipcRenderer.invoke('model:remove', id),
 
-  downloadModel: (
-    modelId: string,
-    url: string,
-    fileName: string,
-  ): Promise<LinkedModel> =>
-    ipcRenderer.invoke('model:download', modelId, url, fileName),
+  renameModel: (id: string, label: string): Promise<ModelEntry | null> =>
+    ipcRenderer.invoke('model:rename', id, label),
+
+  revealModel: (id: string): Promise<void> =>
+    ipcRenderer.invoke('model:revealInFolder', id),
+
+  /** Download a suggested model; it joins the library like any other file. */
+  downloadModel: (url: string, fileName: string): Promise<ModelEntry> =>
+    ipcRenderer.invoke('model:download', url, fileName),
 
   cancelDownload: (): Promise<void> => ipcRenderer.invoke('model:cancelDownload'),
 

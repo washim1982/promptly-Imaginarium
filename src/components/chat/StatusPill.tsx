@@ -1,5 +1,4 @@
 import { useLlm } from '../../state/LlmContext';
-import { MODELS } from '../../lib/models';
 
 const DOT: Record<string, string> = {
   ready: 'bg-[var(--color-neon)]',
@@ -13,8 +12,8 @@ const DOT: Record<string, string> = {
 };
 
 export default function StatusPill() {
-  const { status, activeModelId, settings } = useLlm();
-  const label = MODELS[activeModelId].label;
+  const { status, activeModel, settings } = useLlm();
+  const label = activeModel?.label ?? 'no model';
 
   const text =
     status === 'ready'
@@ -26,7 +25,9 @@ export default function StatusPill() {
           : status === 'initializing'
             ? `Loading ${label} into GPU…`
             : status === 'idle'
-              ? `${label} — not loaded`
+              ? activeModel
+                ? `${label} — not loaded`
+                : 'No model added yet'
               : status === 'error'
                 ? 'Engine error'
                 : status === 'unsupported'

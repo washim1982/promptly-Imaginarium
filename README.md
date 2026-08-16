@@ -1,9 +1,9 @@
 # Imaginarium — Windows desktop
 
 A native Windows build of the Imaginarium AI workspace. Same interface as the web
-app, same inference: Google **Gemma 4 (E2B / E4B)** running entirely on your GPU
-through **LiteRT-LM + WebGPU**. No inference server, no account, nothing leaves
-the machine.
+app, same inference: **any LiteRT-LM `.litertlm` model** running entirely on your
+GPU through **LiteRT-LM + WebGPU**. No inference server, no account, nothing
+leaves the machine.
 
 Ported from the browser build at `../workspace/Projects/Promptly`.
 
@@ -22,6 +22,7 @@ design system (ink background, the `--color-neon` accent variable, `glass` /
 
 | Area | Web build | Desktop build |
 |---|---|---|
+| **Models** | Two hard-coded slots (E2B / E4B) | An open-ended library — add any `.litertlm` by browsing |
 | **Model files** | 2 GB copied into OPFS before first use | Path remembered, file streamed off disk — nothing is copied |
 | **Picking a model** | `<input type="file">` | Native Browse dialog, validated in the main process |
 | **Cross-origin isolation** | COOP/COEP from nginx | `app://` protocol handler in `electron/main.ts` |
@@ -32,18 +33,32 @@ Also: `HashRouter` instead of `BrowserRouter`, the marketing landing page and th
 Notebook/RAG placeholder routes dropped (the app opens straight into Chat), the
 window's own header doubles as the title bar, and SEO/OG metadata is gone.
 
-### Model handling, in detail
+### The model library
 
-`electron/main.ts` keeps a small registry at
-`%APPDATA%\Imaginarium\models.json` mapping each model id to a file path. When
-you load a model, the renderer fetches `app://imaginarium/model/<id>`, the main
-process answers with `fs.createReadStream`, and the resulting
+There are no fixed model slots. `electron/main.ts` keeps a library at
+`%APPDATA%\Imaginarium\models.json` — a list of entries, each with a generated
+id, a renameable label (defaulting to the filename), and the file's path. **Add
+Model** opens a native multi-select picker; every file is validated on its own,
+so one bad pick doesn't discard the good ones, and adding a path that's already
+in the library refreshes it rather than duplicating it.
+
+Nothing constrains what you add beyond the format itself: an 8-byte `LITERTLM`
+magic check and a minimum size, both done in the main process without reading
+more than 8 bytes of a multi-GB file. A 12B model is as valid as a 2B one.
+
+When you load a model, the renderer fetches `app://imaginarium/model/<id>`, the
+main process answers with `fs.createReadStream`, and the resulting
 `ReadableStream<Uint8Array>` goes straight into `Engine.create`. The bytes travel
 disk → wasm heap without ever becoming a `Blob`.
 
-Files you pick from your own disk are **never deleted** — "forget" only drops the
-registry entry. Only models this app downloaded into `%APPDATA%\Imaginarium\models`
-are removable from the UI.
+Entries whose files have been moved or deleted are pruned automatically on every
+listing. Files you picked from your own disk are **never deleted** — "remove"
+only drops the library entry. Only models this app downloaded itself into
+`%APPDATA%\Imaginarium\models` are deleted from disk, and the confirm dialog says
+which case you're in.
+
+The registry is versioned; a v1 file from the two-slot era is migrated to the
+library format on first launch, so previously linked models carry over.
 
 ## Requirements
 
@@ -75,19 +90,23 @@ npm run dist
 
 `npm run dist` produces an NSIS installer in `release/`.
 
-## Getting the model
+## Getting models
 
-Gemma `.litertlm` files are gated and multi-GB, so they aren't bundled:
+Any `.litertlm` file works. Models aren't bundled (they're multi-GB and mostly
+gated), so:
 
-1. Accept the license at
-   [litert-community/gemma-4-E2B-it-litert-lm](https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm)
-   (or the E4B repo).
-2. Download `gemma-4-E2B-it-web.litertlm` (~2 GB) using the file's ↓ button on the
-   "Files" tab — not the preview link.
-3. In the app, **Browse for a .litertlm file…** and point at it. Leave it wherever
-   you downloaded it; the app just remembers the path.
+1. Download a `.litertlm` — the
+   [litert-community](https://huggingface.co/litert-community) org on Hugging
+   Face publishes the web-optimized Gemma builds. Gated repos need you to accept
+   the license while signed in; use the file's ↓ button on the "Files" tab, not
+   the preview link.
+2. In the app, **Browse for a .litertlm file…** (or **Add another model…**) and
+   point at it. Leave it wherever you downloaded it — the app records the path,
+   not a copy.
 
-The in-app download button only works for non-gated repos.
+Add as many as you like and switch between them from the loader or ⚙ Settings.
+The empty state also offers one-click downloads for the two Gemma builds, but
+those only succeed for non-gated repos.
 
 ## Web search (optional)
 
@@ -122,9 +141,8 @@ where it would collide with the star. `npm run dist` runs this automatically.
 ## Known gaps
 
 - **The installer is unsigned**, so Windows SmartScreen will warn on first run.
-- **The model slot is a label, not a check.** Picking an E4B file while the E2B
-  slot is selected works — the engine reads the real file — and the loader now
-  warns about the mismatch, but nothing stops you.
+- **No per-model settings.** Temperature, max tokens, and the system prompt are
+  global, so they don't follow the model you switch to.
 
 ## License
 

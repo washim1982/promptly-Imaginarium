@@ -1,40 +1,45 @@
 import { useLlm } from '../../state/LlmContext';
-import { MODELS } from '../../lib/models';
+import { SUGGESTED_MODELS, repoUrl } from '../../lib/models';
 import { formatBytes, openExternal, shortenPath } from '../../lib/desktop';
-
-function gb(n: number) {
-  return `${n.toFixed(1)} GB`;
-}
 
 // Shown when the GPU is available but no model is loaded yet (status: idle |
 // downloading | reading | initializing | error).
 //
-// Desktop difference from the web build: there is no "import into OPFS" step.
-// You point the app at a .litertlm file once and it is streamed off disk from
-// then on, so the primary action is a native Browse dialog and the secondary
-// state is "this exact file is linked", shown with its real path.
+// Desktop difference from the web build: there are no fixed model slots. The
+// library holds any number of .litertlm files, so this is a picker over
+// whatever the user has added, with an empty state that leads with Browse.
 export default function ModelLoader() {
-  const { status, error, progress, activeModelId, linked, loadModel, cancel } =
-    useLlm();
-  const spec = MODELS[activeModelId];
+  const {
+    status,
+    error,
+    progress,
+    models,
+    activeModelId,
+    activeModel,
+    rejected,
+    setActiveModel,
+    loadModel,
+    cancel,
+    dismissRejected,
+  } = useLlm();
 
   const downloading = status === 'downloading';
   const busy = downloading || status === 'reading' || status === 'initializing';
   const pct = Math.round((progress?.ratio ?? 0) * 100);
-
-  // The picker registers whatever file you choose under the *selected* model
-  // slot, so it's easy to end up with E4B weights loaded while the UI says E2B.
-  // Nothing breaks — the engine reads the real file — but the label would lie.
-  const mismatch = linked != null && linked.name !== spec.file;
+  const empty = models.length === 0;
 
   return (
     <div className="glass mx-auto w-full max-w-xl rounded-[var(--radius-panel)] p-8 text-center">
       <div className="neon-glow mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-[var(--color-neon)]/20 text-2xl text-[var(--color-neon)]">
         ✦
       </div>
-      <h2 className="text-xl font-semibold text-white">Load a model</h2>
+      <h2 className="text-xl font-semibold text-white">
+        {empty ? 'Add a model' : 'Choose a model'}
+      </h2>
       <p className="mt-1 text-sm text-white/50">
-        {spec.label} · {gb(spec.approxSizeGB)} · runs entirely on this machine
+        {empty
+          ? 'Any LiteRT-LM .litertlm file — it runs entirely on this machine'
+          : `${models.length} model${models.length === 1 ? '' : 's'} in your library`}
       </p>
 
       {busy ? (
@@ -42,9 +47,7 @@ export default function ModelLoader() {
           <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full bg-[var(--color-neon)] transition-[width]"
-              style={{
-                width: status === 'initializing' ? '100%' : `${pct}%`,
-              }}
+              style={{ width: status === 'initializing' ? '100%' : `${pct}%` }}
             />
           </div>
           <p className="mono mt-3 text-[11px] text-white/50">
@@ -53,10 +56,10 @@ export default function ModelLoader() {
               : status === 'reading'
                 ? `Reading model from disk · ${pct}%`
                 : progress?.totalBytes
-                  ? `Downloading ${pct}% · ${gb(
-                      progress.receivedBytes / 1e9,
-                    )} / ${gb(progress.totalBytes / 1e9)}`
-                  : `Downloading ${gb((progress?.receivedBytes ?? 0) / 1e9)}…`}
+                  ? `Downloading ${pct}% · ${formatBytes(
+                      progress.receivedBytes,
+                    )} / ${formatBytes(progress.totalBytes)}`
+                  : `Downloading ${formatBytes(progress?.receivedBytes ?? 0)}…`}
           </p>
           {downloading && (
             <button
@@ -69,69 +72,117 @@ export default function ModelLoader() {
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          {linked && (
-            <>
-              <button
-                onClick={() => loadModel({ type: 'linked' })}
-                className="neon-glow rounded-xl bg-[var(--color-neon)] px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110"
-              >
-                Load {spec.label}
-              </button>
-              <p
-                className="mono -mt-1 truncate text-[10px] text-white/35"
-                title={linked.path}
-              >
-                {shortenPath(linked.path)} · {formatBytes(linked.size)}
-              </p>
-              {mismatch && (
-                <p className="mono -mt-1 text-[10px] leading-relaxed text-amber-300/70">
-                  ⚠ this file is <span className="text-amber-200">{linked.name}</span>,
-                  not {spec.file} — it will load, but the {spec.label} label won’t
-                  match the weights
-                </p>
-              )}
-            </>
+          {/* The library. Clicking a row selects it; the button below loads it. */}
+          {!empty && (
+            <div className="max-h-64 space-y-1.5 overflow-y-auto text-left">
+              {models.map((m) => {
+                const active = m.id === activeModelId;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setActiveModel(m.id)}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                      active
+                        ? 'neon-glow border-[var(--color-neon)]/60 bg-[var(--color-neon)]/10'
+                        : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        active ? 'bg-[var(--color-neon)]' : 'bg-white/20'
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-white">
+                        {m.label}
+                      </span>
+                      <span
+                        className="mono block truncate text-[10px] text-white/35"
+                        title={m.path}
+                      >
+                        {shortenPath(m.path)}
+                      </span>
+                    </span>
+                    <span className="mono shrink-0 text-[10px] text-white/40">
+                      {formatBytes(m.size)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           )}
 
-          {/* The reliable path for gated Gemma weights: a file the user already
-              has. Primary action until something is linked. */}
+          {activeModel && (
+            <button
+              onClick={() => loadModel({ type: 'library' })}
+              className="neon-glow rounded-xl bg-[var(--color-neon)] px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110"
+            >
+              Load {activeModel.label}
+            </button>
+          )}
+
           <button
-            onClick={() => loadModel({ type: 'browse' })}
+            onClick={() => loadModel({ type: 'add' })}
             className={`rounded-xl px-4 py-3 text-sm font-semibold transition ${
-              linked
-                ? 'glass text-white hover:bg-white/10'
-                : 'neon-glow bg-[var(--color-neon)] text-black hover:brightness-110'
+              empty
+                ? 'neon-glow bg-[var(--color-neon)] text-black hover:brightness-110'
+                : 'glass text-white hover:bg-white/10'
             }`}
           >
-            {linked ? 'Choose a different file…' : 'Browse for a .litertlm file…'}
+            {empty ? 'Browse for a .litertlm file…' : '＋ Add another model…'}
           </button>
 
-          {/* Direct download only works for non-gated repos; secondary link. */}
-          <button
-            onClick={() => loadModel({ type: 'download' })}
-            className="mono text-[11px] text-white/40 underline transition hover:text-white/70"
-          >
-            or download it now (won’t work for gated models)
-          </button>
+          {/* Files the picker refused, with the reason. */}
+          {rejected.length > 0 && (
+            <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-left">
+              {rejected.map((r) => (
+                <p key={r.name} className="text-[11px] leading-relaxed text-amber-200/90">
+                  <span className="mono">{r.name}</span> — {r.reason}
+                </p>
+              ))}
+              <button
+                onClick={dismissRejected}
+                className="mono mt-1 text-[10px] text-white/40 underline hover:text-white/70"
+              >
+                dismiss
+              </button>
+            </div>
+          )}
 
-          <p className="mt-1 text-[11px] leading-relaxed text-white/35">
-            Gemma is gated, so a direct download returns a login page. Accept the
-            license on{' '}
-            <button
-              type="button"
-              onClick={() => openExternal(spec.url.replace(/\/resolve\/.+$/, ''))}
-              className="text-[var(--color-teal)] underline"
-            >
-              Hugging Face
-            </button>
-            , download the ~{spec.approxSizeGB} GB{' '}
-            <span className="mono">.litertlm</span> (use the file’s ↓ button, not
-            the preview link), then browse to it above. It stays where you put it
-            — nothing is copied.
-          </p>
-          <p className="mono mt-1 text-[10px] text-white/30">
-            Switch E2B / E4B in ⚙ Settings
-          </p>
+          {empty && (
+            <div className="mt-1 border-t border-white/5 pt-3">
+              <p className="mono mb-2 text-[10px] text-white/30">
+                or download one
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {SUGGESTED_MODELS.map((s) => (
+                  <div key={s.file} className="flex items-center gap-2">
+                    <button
+                      onClick={() => loadModel({ type: 'download', suggestion: s })}
+                      className="mono flex-1 rounded-lg border border-white/10 px-3 py-2 text-left text-[11px] text-white/60 transition hover:bg-white/5 hover:text-white"
+                    >
+                      {s.label}{' '}
+                      <span className="text-white/30">· ~{s.approxSizeGB} GB</span>
+                    </button>
+                    <button
+                      onClick={() => openExternal(repoUrl(s))}
+                      title="Open the model page"
+                      className="mono shrink-0 rounded-lg px-2 py-2 text-[10px] text-[var(--color-teal)] underline"
+                    >
+                      repo ↗
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-white/35">
+                Gemma is gated, so a direct download returns a login page. Accept
+                the license on the repo page, download the{' '}
+                <span className="mono">.litertlm</span> with the file’s ↓ button,
+                then browse to it above — it stays where you put it, nothing is
+                copied.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

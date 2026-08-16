@@ -1,46 +1,86 @@
-// Catalog of the web-compatible Gemma 4 variants exposed by the LiteRT-LM JS API.
-// E2B is the lightweight default; E4B is the heavier, higher-quality option the
-// user can opt into from Settings.
+// The model library.
+//
+// The web build shipped two hard-coded slots (gemma-4-E2B / E4B) because a
+// browser could only reasonably cache one or two multi-GB blobs in OPFS. On the
+// desktop there is no such limit: the app just remembers file paths, so it holds
+// an open-ended library and any .litertlm file can be added by browsing to it.
+//
+// A ModelEntry is created by the main process (which owns models.json) — the
+// renderer never invents one.
 
-export type ModelId = 'gemma-4-E2B' | 'gemma-4-E4B';
-
-export interface ModelSpec {
-  id: ModelId;
-  label: string; // shown in the status pill, e.g. "gemma-4-E2B"
-  file: string; // .litertlm filename
-  url: string; // Hugging Face resolve URL
-  approxSizeGB: number;
-  description: string;
-  default?: boolean;
+export interface ModelEntry {
+  /** Generated uuid. Stable across renames and used in the app://model/<id> URL. */
+  id: string;
+  /** Display name. Defaults to the filename; the user can rename it. */
+  label: string;
+  /** Absolute path. The file stays wherever the user put it. */
+  path: string;
+  /** Basename of `path`, kept so the UI can show the real filename after a rename. */
+  name: string;
+  size: number;
+  /** True if this app downloaded the file itself, so it may also delete it. */
+  managed: boolean;
+  addedAt: number;
+  lastUsedAt: number | null;
 }
 
-// Verified against the litert-community org (June 2026): the web-optimized
-// `.litertlm` files live inside the `*-it-litert-lm` repos. These Gemma repos are
-// GATED on Hugging Face — an unauthenticated browser fetch returns HTTP 401, so
-// the "Download" button only works if the user is logged in / has accepted the
-// license. The "local file" path is the reliable, fully-offline alternative.
+/** A file that failed validation during a multi-file add. */
+export interface RejectedModel {
+  name: string;
+  reason: string;
+}
+
+export interface AddResult {
+  added: ModelEntry[];
+  rejected: RejectedModel[];
+}
+
+/**
+ * Optional one-click downloads. These are *shortcuts*, not slots — picking one
+ * produces an ordinary library entry, exactly like browsing to a file. Both
+ * repos are gated on Hugging Face, so an unauthenticated fetch returns a login
+ * page; the browse path is the reliable one.
+ */
+export interface ModelSuggestion {
+  label: string;
+  file: string;
+  url: string;
+  approxSizeGB: number;
+  description: string;
+}
+
 const HF = 'https://huggingface.co/litert-community';
 
-export const MODELS: Record<ModelId, ModelSpec> = {
-  'gemma-4-E2B': {
-    id: 'gemma-4-E2B',
+export const SUGGESTED_MODELS: ModelSuggestion[] = [
+  {
     label: 'gemma-4-E2B',
     file: 'gemma-4-E2B-it-web.litertlm',
     url: `${HF}/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.litertlm`,
     approxSizeGB: 2.0,
-    description: 'Lightweight, fastest to load. Recommended default.',
-    default: true,
+    description: 'Lightweight, fastest to load.',
   },
-  'gemma-4-E4B': {
-    id: 'gemma-4-E4B',
+  {
     label: 'gemma-4-E4B',
     file: 'gemma-4-E4B-it-web.litertlm',
     url: `${HF}/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it-web.litertlm`,
     approxSizeGB: 3.1,
     description: 'Higher quality, larger download and more GPU memory.',
   },
-};
+];
 
-export const DEFAULT_MODEL_ID: ModelId = 'gemma-4-E2B';
+/** Repo page for a suggestion (strip the /resolve/... file part). */
+export function repoUrl(s: ModelSuggestion): string {
+  return s.url.replace(/\/resolve\/.+$/, '');
+}
 
-export const MODEL_LIST: ModelSpec[] = Object.values(MODELS);
+/** Default display name for a file: its basename without the .litertlm suffix. */
+export function labelFromFileName(fileName: string): string {
+  return fileName.replace(/\.litertlm$/i, '') || fileName;
+}
+
+/** Newest-used first, then most recently added — the order the UI lists them in. */
+export function sortModels(models: ModelEntry[]): ModelEntry[] {
+  return [...models].sort(
+    (a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || b.addedAt - a.addedAt,
+  );
+}
