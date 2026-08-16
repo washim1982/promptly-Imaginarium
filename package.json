@@ -1,0 +1,50 @@
+{
+  "name": "imaginarium-desktop",
+  "productName": "Imaginarium",
+  "version": "1.0.4",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "description": "Private, on-device AI workspace running Gemma 4 via LiteRT-LM + WebGPU, packaged as a Windows desktop app.",
+  "scripts": {
+    "postinstall": "node scripts/vendor-assets.mjs",
+    "vendor": "node scripts/vendor-assets.mjs",
+    "icon": "electron scripts/make-icon.cjs",
+    "dev": "npm run vendor && node scripts/dev.mjs",
+    "typecheck": "tsc -b",
+    "build:renderer": "vite build",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build": "npm run vendor && npm run typecheck && npm run build:renderer && npm run build:electron",
+    "start": "npm run build && electron .",
+    "dist": "npm run icon && npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@litert-lm/core": "^0.13.1",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.1.0",
+    "react-router-dom": "^6.26.2",
+    "react-syntax-highlighter": "^15.6.6",
+    "remark-gfm": "^4.0.1",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.20.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@webgpu/types": "^0.1.44",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.24.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  },
+  "allowScripts": {
+    "electron@43.4.0": true
+  }
+}

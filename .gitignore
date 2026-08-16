@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.tsbuildinfo
+
+# Generated from build/icon.svg by `npm run icon` (which `npm run dist` runs).
+# The SVG is the source of truth; these are build output.
+build/icon.ico
+build/icon.png
+
+# Vendored at install time by scripts/vendor-assets.mjs — large binaries, not
+# something to keep in version control.
+public/litertlm/
+public/tesseract/worker.min.js
+public/tesseract/tesseract-core*.wasm*
+public/tesseract/*.js

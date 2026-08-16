@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Imaginarium</title>
+    <meta name="theme-color" content="#0c0e12" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <!--
+      Desktop build. Everything the renderer loads is local: the app:// protocol
+      handler in electron/main.ts serves this document cross-origin isolated
+      (COOP/COEP), which is what LiteRT-LM's SharedArrayBuffer usage requires.
+      connect-src allows the app:// model stream and the localhost search API.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' app: ; script-src 'self' app: 'wasm-unsafe-eval'; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: data: blob:; font-src 'self' app: data:; connect-src 'self' app: blob: data: http://localhost:5173 ws://localhost:5173; worker-src 'self' app: blob:; object-src 'none'; base-uri 'none'"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

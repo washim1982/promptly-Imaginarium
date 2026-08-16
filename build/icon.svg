@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!--
+    Imaginarium app icon. Source of truth for build/icon.ico — regenerate with
+    `npm run icon` after editing. Same mark as public/favicon.svg (dark rounded
+    tile, neon four-pointed star, accent spark), given the depth an app icon
+    needs at 256px while still reading at 16px.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1f26" />
+      <stop offset="1" stop-color="#0a0c10" />
+    </linearGradient>
+
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ff3da6" stop-opacity="0.5" />
+      <stop offset="0.55" stop-color="#ff3da6" stop-opacity="0.13" />
+      <stop offset="1" stop-color="#ff3da6" stop-opacity="0" />
+    </radialGradient>
+
+    <linearGradient id="star" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#ff7ad4" />
+      <stop offset="0.5" stop-color="#ff3da6" />
+      <stop offset="1" stop-color="#e81d86" />
+    </linearGradient>
+
+    <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="7" />
+    </filter>
+  </defs>
+
+  <!-- Tile -->
+  <rect width="256" height="256" rx="56" fill="url(#tile)" />
+  <!-- Neon rim, inset so it survives the rounded corners at small sizes -->
+  <rect
+    x="1.5"
+    y="1.5"
+    width="253"
+    height="253"
+    rx="54.5"
+    fill="none"
+    stroke="#ff3da6"
+    stroke-opacity="0.3"
+    stroke-width="3"
+  />
+
+  <!-- Ambient glow behind the mark -->
+  <circle cx="128" cy="128" r="90" fill="url(#halo)" />
+
+  <!-- The star, centred on the tile -->
+  <g transform="translate(0 8)">
+    <path
+      d="M128 56l16.8 47.2L192 120l-47.2 16.8L128 184l-16.8-47.2L64 120l47.2-16.8z"
+      fill="#ff3da6"
+      opacity="0.9"
+      filter="url(#bloom)"
+    />
+    <path
+      d="M128 56l16.8 47.2L192 120l-47.2 16.8L128 184l-16.8-47.2L64 120l47.2-16.8z"
+      fill="url(#star)"
+    />
+  </g>
+
+  <!-- Accent spark, carried over from the favicon. Stripped by make-icon.cjs
+       at 16/24px, where it collides with the star's upper-right arm and reads
+       as a smudge rather than a second element. -->
+  <g id="spark">
+    <circle cx="186" cy="70" r="12" fill="#ff5cc8" opacity="0.55" filter="url(#bloom)" />
+    <circle cx="186" cy="70" r="11" fill="#ff8ada" />
+  </g>
+</svg>

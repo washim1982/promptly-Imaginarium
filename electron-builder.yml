@@ -1,0 +1,36 @@
+appId: com.imaginarium.desktop
+productName: Imaginarium
+copyright: Imaginarium
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+# The app:// handler reads the renderer off disk with fs.createReadStream, and
+# the 19 MB LiteRT-LM wasm is loaded by URL — neither reaches inside an asar.
+# Nothing else ships (esbuild bundles main, Vite bundles the renderer), so the
+# packaged tree is only a few dozen files. Unpacked keeps it simple and correct.
+asar: false
+
+win:
+  # Generated from build/icon.svg by `npm run icon` (7 sizes, 16→256).
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Imaginarium
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
