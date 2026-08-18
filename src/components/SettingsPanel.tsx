@@ -23,6 +23,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   } = useLlm();
 
   const [temp, setTemp] = useState(settings.temperature);
+  const [topK, setTopK] = useState(settings.topK);
+  const [topP, setTopP] = useState(settings.topP);
+  const [maxOutput, setMaxOutput] = useState(settings.maxOutputTokens);
   const [maxTokens, setMaxTokens] = useState(settings.maxNumTokens);
   const [systemPrompt, setSystemPrompt] = useState(settings.systemPrompt);
   const [glowText, setGlowText] = useState(
@@ -273,10 +276,75 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           />
         </section>
 
-        {/* Max tokens */}
+        {/* Top-K / Top-P. These are not cosmetic: without them the sampler
+            falls back to greedy decoding and ignores the temperature. */}
         <section className="mb-7">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="mono text-[11px] text-white/40">Max tokens</h3>
+            <h3 className="mono text-[11px] text-white/40">Top-K</h3>
+            <span className="mono text-[11px] text-[var(--color-neon)]">{topK}</span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={128}
+            step={1}
+            value={topK}
+            onChange={(e) => setTopK(Number(e.target.value))}
+            onMouseUp={() => updateSettings({ topK })}
+            onTouchEnd={() => updateSettings({ topK })}
+            className="w-full accent-[var(--color-neon)]"
+          />
+          <div className="mb-2 mt-4 flex items-center justify-between">
+            <h3 className="mono text-[11px] text-white/40">Top-P</h3>
+            <span className="mono text-[11px] text-[var(--color-neon)]">
+              {topP.toFixed(2)}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.01}
+            value={topP}
+            onChange={(e) => setTopP(Number(e.target.value))}
+            onMouseUp={() => updateSettings({ topP })}
+            onTouchEnd={() => updateSettings({ topP })}
+            className="w-full accent-[var(--color-neon)]"
+          />
+          <p className="mt-1 text-[10px] text-white/30">
+            Gemma's reference values are 64 / 0.95. Very low settings decode
+            greedily and can loop.
+          </p>
+        </section>
+
+        {/* Reply length cap */}
+        <section className="mb-7">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="mono text-[11px] text-white/40">Max reply tokens</h3>
+            <span className="mono text-[11px] text-[var(--color-neon)]">
+              {maxOutput}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={256}
+            max={8192}
+            step={256}
+            value={maxOutput}
+            onChange={(e) => setMaxOutput(Number(e.target.value))}
+            onMouseUp={() => updateSettings({ maxOutputTokens: maxOutput })}
+            onTouchEnd={() => updateSettings({ maxOutputTokens: maxOutput })}
+            className="w-full accent-[var(--color-neon)]"
+          />
+          <p className="mt-1 text-[10px] text-white/30">
+            Stops a single reply from running away. Applies to the next reply.
+          </p>
+        </section>
+
+        {/* Context window */}
+        <section className="mb-7">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="mono text-[11px] text-white/40">Context window</h3>
             <span className="mono text-[11px] text-[var(--color-neon)]">
               {maxTokens}
             </span>
@@ -284,8 +352,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           <input
             type="range"
             min={512}
-            max={8192}
-            step={256}
+            max={32768}
+            step={512}
             value={maxTokens}
             onChange={(e) => setMaxTokens(Number(e.target.value))}
             onMouseUp={() => updateSettings({ maxNumTokens: maxTokens })}
@@ -293,7 +361,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             className="w-full accent-[var(--color-neon)]"
           />
           <p className="mt-1 text-[10px] text-white/30">
-            Applies on next model load.
+            Sizes the KV cache in GPU memory. Applies on next model load.
           </p>
         </section>
 

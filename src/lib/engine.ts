@@ -20,19 +20,33 @@ import { ControlTokenFilter } from './controlTokens';
 // scripts/vendor-assets.mjs copied into public/litertlm/.
 const WASM_DIR = new URL('litertlm/', document.baseURI).href;
 
+type Core = typeof import('@litert-lm/core');
+
+let corePromise: Promise<Core> | null = null;
 let wasmReady: Promise<unknown> | null = null;
+
+/** The SDK module. Kept lazy so its large wasm assets load on first use. */
+function loadCore(): Promise<Core> {
+  corePromise ??= import('@litert-lm/core');
+  return corePromise;
+}
 
 /** Load the local wasm runtime once per session (loadLiteRtLm throws if called twice). */
 function ensureWasmRuntime(): Promise<unknown> {
-  wasmReady ??= import('@litert-lm/core').then(({ loadLiteRtLm }) =>
-    loadLiteRtLm(WASM_DIR),
-  );
+  wasmReady ??= loadCore().then(({ loadLiteRtLm }) => loadLiteRtLm(WASM_DIR));
   return wasmReady;
 }
 
 export interface EngineConfig {
   temperature: number;
+  /** Top-K cutoff. Gemma's reference sampling settings use 64. */
+  topK: number;
+  /** Nucleus cutoff. Gemma's reference sampling settings use 0.95. */
+  topP: number;
+  /** Context window the executor allocates a KV cache for. */
   maxNumTokens: number;
+  /** Hard cap on a single reply, so a degenerate loop cannot run to the context limit. */
+  maxOutputTokens: number;
   systemPrompt: string;
 }
 
@@ -66,12 +80,31 @@ export class LlmEngine {
   }
 
   /**
+   * Full sampler configuration for a session.
+   *
+   * `type` matters as much as `temperature`: SamplerParameters defaults to
+   * TYPE_UNSPECIFIED with k = p = 0, which decodes greedily and ignores the
+   * temperature entirely — the classic route to a reply that degenerates into
+   * repeating the same token forever. Setting TOP_P with Gemma's reference
+   * k/p is what makes `temperature` take effect at all.
+   */
+  private async samplerParams() {
+    const { SamplerType } = await loadCore();
+    return {
+      type: SamplerType.TOP_P,
+      k: this.config.topK,
+      p: this.config.topP,
+      temperature: this.config.temperature,
+    };
+  }
+
+  /**
    * Load the model into a WebGPU-backed engine and open an empty conversation.
    * `model` streams from the user's .litertlm file via the app:// handler.
    */
   async init(model: ReadableStream<Uint8Array>): Promise<void> {
     await ensureWasmRuntime();
-    const { Engine } = await import('@litert-lm/core');
+    const { Engine } = await loadCore();
     this.engine = await Engine.create({
       model,
       mainExecutorSettings: { maxNumTokens: this.config.maxNumTokens },
@@ -96,7 +129,8 @@ export class LlmEngine {
     this.conversation = await this.engine.createConversation({
       preface: messages.length ? { messages } : undefined,
       sessionConfig: {
-        samplerParams: { temperature: this.config.temperature },
+        samplerParams: await this.samplerParams(),
+        maxOutputTokens: this.config.maxOutputTokens,
       },
     });
   }
@@ -157,7 +191,8 @@ export class LlmEngine {
     this.oneShot = await this.engine.createConversation({
       preface,
       sessionConfig: {
-        samplerParams: { temperature: this.config.temperature },
+        samplerParams: await this.samplerParams(),
+        maxOutputTokens: this.config.maxOutputTokens,
       },
     });
     try {

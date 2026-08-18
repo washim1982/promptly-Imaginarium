@@ -120,9 +120,15 @@ interface LlmState {
   importHistory: (file: File) => Promise<void>;
 }
 
+// Gemma's reference sampling settings are temperature 1.0 / top-K 64 /
+// top-P 0.95. Nudged slightly cooler for an assistant, but K and P are left at
+// the reference values — they are what keep the sampler out of greedy mode.
 const DEFAULT_SETTINGS: EngineConfig = {
   temperature: 0.75,
+  topK: 64,
+  topP: 0.95,
   maxNumTokens: 8192,
+  maxOutputTokens: 2048,
   systemPrompt: 'You are Imaginarium, a helpful, concise assistant.',
 };
 
