@@ -70,4 +70,13 @@ export function registerAgentIpc(): void {
     tools.runCommand(await requireWorkspace(), String(command ?? '')),
   );
   ipcMain.handle('agent:fetchUrl', async (_e, url: string) => tools.fetchUrl(String(url ?? '')));
+
+  // Chat sidebar's Workspace section: a browsable tree and whole-file reads
+  // for attaching to a message (same workspace confinement as the tools).
+  ipcMain.handle('agent:listEntries', async (_e, rel: string) =>
+    tools.listEntries(await requireWorkspace(), String(rel ?? '.')),
+  );
+  ipcMain.handle('agent:readForAttach', async (_e, rel: string) =>
+    tools.readForAttach(await requireWorkspace(), String(rel ?? '')),
+  );
 }

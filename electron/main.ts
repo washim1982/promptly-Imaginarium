@@ -27,6 +27,8 @@ import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { registerSvnIpc } from './svn/ipc';
 import { registerGitIpc } from './git/ipc';
+import { registerGoogleIpc } from './google/ipc';
+import { registerAuth0Ipc } from './auth0/ipc';
 import { registerAgentIpc } from './agent/ipc';
 
 const SCHEME = 'app';
@@ -520,6 +522,8 @@ async function downloadModel(
 function registerIpc(): void {
   registerSvnIpc();
   registerGitIpc();
+  registerGoogleIpc();
+  registerAuth0Ipc();
   registerAgentIpc();
 
   ipcMain.handle('app:info', () => ({

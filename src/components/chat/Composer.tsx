@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useLlm } from '../../state/LlmContext';
 import StatusPill from './StatusPill';
+import AttachmentChip from './AttachmentChip';
 
 export default function Composer({ compact = false }: { compact?: boolean }) {
   const {
@@ -9,7 +10,8 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
     send,
     cancel,
     messages,
-    newChat,
+    attachments,
+    removeAttachment,
     agentEnabled,
     setAgentEnabled,
     workspace,
@@ -23,7 +25,7 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
   const ready = status === 'ready';
 
   function submit() {
-    if (!ready || isGenerating || !text.trim()) return;
+    if (!ready || isGenerating || (!text.trim() && !attachments.length)) return;
     send(text);
     setText('');
     if (taRef.current) taRef.current.style.height = 'auto';
@@ -46,6 +48,13 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
   return (
     <div className="w-full">
       <div className="glass neon-glow rounded-[var(--radius-panel)] px-4 py-3">
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5 border-b border-white/5 pb-2">
+            {attachments.map((a) => (
+              <AttachmentChip key={a.id} attachment={a} onRemove={() => removeAttachment(a.id)} />
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <textarea
             ref={taRef}
@@ -57,7 +66,11 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
             onKeyDown={onKeyDown}
             rows={1}
             placeholder={
-              ready ? 'Type a message or command…' : 'Load a model to start chatting…'
+              !ready
+                ? 'Load a model to start chatting…'
+                : attachments.length
+                  ? 'Ask about the attached item — or press Enter to summarize it…'
+                  : 'Type a message or command…'
             }
             className="max-h-[200px] flex-1 resize-none bg-transparent py-1 text-[15px] text-white placeholder:text-white/35 focus:outline-none"
           />
@@ -72,7 +85,7 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
           ) : (
             <button
               onClick={submit}
-              disabled={!ready || !text.trim()}
+              disabled={!ready || (!text.trim() && !attachments.length)}
               className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-30"
               aria-label="Send"
             >
@@ -138,14 +151,6 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
               </span>
             )}
           </div>
-          {messages.length > 0 && (
-            <button
-              onClick={newChat}
-              className="mono flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-[10px] text-white/60 transition hover:bg-white/10 hover:text-white"
-            >
-              ＋ New chat
-            </button>
-          )}
         </div>
       </div>
 

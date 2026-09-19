@@ -15,3 +15,21 @@ public/litertlm/
 public/tesseract/worker.min.js
 public/tesseract/tesseract-core*.wasm*
 public/tesseract/*.js
+
+# Local credentials: OAuth client IDs/secrets for Auth0 and Google. Loaded by
+# `npm run dev` (see scripts/dev.mjs) — copy .env.example to .env and fill it
+# in. Never commit these; .env.example holds the placeholder names.
+.env
+.env.*
+!.env.example
+*.local
+
+# Anything the app writes at runtime, in case a userData folder is ever copied
+# into the repo for debugging: saved OAuth clients, encrypted tokens, settings.
+auth0-client.json
+auth0-session.bin
+google-oauth-client.json
+google-account.bin
+svn-settings.json
+agent-settings.json
+models.json

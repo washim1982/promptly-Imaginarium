@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useLlm } from '../../state/LlmContext';
 import { usePrompt } from '../PromptDialog';
 
@@ -16,8 +16,11 @@ function relativeTime(ts: number): string {
 
 export default function ConversationSidebar({
   onNavigate,
+  embedded = false,
 }: {
   onNavigate?: () => void;
+  /** Inside the chat sidebar's History section: no card, no New chat (the sidebar has one), plus a filter. */
+  embedded?: boolean;
 }) {
   const {
     conversations,
@@ -31,9 +34,24 @@ export default function ConversationSidebar({
   } = useLlm();
   const ask = usePrompt();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [filter, setFilter] = useState('');
+  const shown = filter.trim()
+    ? conversations.filter((c) => c.title.toLowerCase().includes(filter.trim().toLowerCase()))
+    : conversations;
 
   return (
-    <aside className="glass flex h-full w-full flex-col rounded-[var(--radius-panel)] p-3">
+    <aside className={`flex h-full w-full flex-col p-3 ${embedded ? '' : 'glass rounded-[var(--radius-panel)]'}`}>
+      {embedded ? (
+        conversations.length > 5 && (
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter chats"
+            aria-label="Filter chats"
+            className="mb-2 w-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5 text-[12px] text-white placeholder:text-white/30 focus:border-[var(--color-neon)]/50 focus:outline-none"
+          />
+        )
+      ) : (
       <button
         onClick={() => {
           newChat();
@@ -43,6 +61,7 @@ export default function ConversationSidebar({
       >
         ＋ New chat
       </button>
+      )}
 
       <div className="-mr-1 flex-1 space-y-1 overflow-y-auto pr-1">
         {conversations.length === 0 ? (
@@ -51,7 +70,7 @@ export default function ConversationSidebar({
             browser.
           </p>
         ) : (
-          conversations.map((c) => {
+          shown.map((c) => {
             const active = c.id === activeConversationId;
             return (
               <div

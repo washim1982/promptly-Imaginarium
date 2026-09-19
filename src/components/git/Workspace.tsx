@@ -29,6 +29,7 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  ShieldAlert,
   TerminalSquare,
   Trash2,
   UserRound,
@@ -521,6 +522,7 @@ interface RepoWorkspaceProps {
   onSettings: () => void;
   onOpenExplorer: () => void;
   onOpenTerminal: () => void;
+  onScan: () => void;
   onCopied: (hash: string) => void;
 }
 
@@ -545,6 +547,7 @@ export function RepoWorkspace({
   onSettings,
   onOpenExplorer,
   onOpenTerminal,
+  onScan,
   onCopied,
 }: RepoWorkspaceProps) {
   const staged = repo.changes.filter((change) => change.staged).length;
@@ -572,6 +575,13 @@ export function RepoWorkspace({
             aria-label="Open in File Explorer"
           >
             <FolderOpen size={16} />
+          </button>
+          <button
+            className="gs-button secondary"
+            onClick={onScan}
+            title="Find tokens, keys and passwords in your files and in the commit history"
+          >
+            <ShieldAlert size={14} /> Scan
           </button>
           <button className="gs-button sign-in" onClick={onSettings}>
             <KeyRound size={14} /> Account & remote

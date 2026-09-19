@@ -1,0 +1,392 @@
+// Git Studio → Scan: find credentials in the working tree and in the history,
+// remove the selected ones (rewriting the affected commits), then optionally
+// publish the rewritten branch.
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle, ArrowUpFromLine, CheckCircle2, FileWarning, Loader2, ShieldAlert, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { errorMessage, gitApi, type Candidate, type Finding, type RemovalSummary, type ScanResult } from '../../lib/git/api';
+import type { RepoState } from '../../lib/git/types';
+import { useLlm } from '../../state/LlmContext';
+import { findReviewModel, REVIEW_MODEL_LABEL, stripThinking } from '../../lib/svn/review';
+import { BATCH_SIZE, buildBatchPrompt, DEEP_SCAN_SYSTEM, maskValue, parseVerdicts } from '../../lib/git/deepScan';
+import { Modal, Spinner } from './Modal';
+
+/** A suspect the model confirmed: shown like a finding, but never pre-ticked. */
+interface AiFinding {
+  id: string;
+  kind: string;
+  path: string;
+  line: number;
+  where: 'worktree' | 'history';
+  commit?: string;
+  masked: string;
+}
+
+type DeepState =
+  | { phase: 'idle' }
+  | { phase: 'collecting' }
+  | { phase: 'loading-model'; model: string }
+  | { phase: 'asking'; done: number; total: number }
+  | { phase: 'done'; considered: number; asked: number }
+  | { phase: 'error'; message: string };
+
+type Phase = 'scanning' | 'results' | 'confirm' | 'removing' | 'done';
+
+export function SecretScanModal({
+  repo,
+  onClose,
+  onState,
+  onNotify,
+}: {
+  repo: RepoState;
+  onClose: () => void;
+  onState: (state: RepoState) => void;
+  onNotify: (type: 'success' | 'error', message: string) => void;
+}) {
+  const [phase, setPhase] = useState<Phase>('scanning');
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [summary, setSummary] = useState<RemovalSummary | null>(null);
+  const [error, setError] = useState('');
+  const [pushed, setPushed] = useState(false);
+  const remote = repo.remotes[0]?.name ?? '';
+
+  // ---- deep scan (optional, local model) ----
+  const llm = useLlm();
+  const latest = useRef(llm);
+  latest.current = llm;
+  const [deep, setDeep] = useState<DeepState>({ phase: 'idle' });
+  const [aiFindings, setAiFindings] = useState<AiFinding[]>([]);
+  const deepModel = findReviewModel(llm.models);
+
+  const runDeepScan = async () => {
+    setAiFindings([]);
+    setDeep({ phase: 'collecting' });
+    try {
+      const { candidates, linesConsidered } = await gitApi.scanCandidates(repo.root);
+      if (!candidates.length) {
+        setDeep({ phase: 'done', considered: linesConsidered, asked: 0 });
+        return;
+      }
+      const target = deepModel;
+      if (!target) {
+        setDeep({ phase: 'error', message: `${REVIEW_MODEL_LABEL} is not in your model library — add it in Chat to use the deep scan.` });
+        return;
+      }
+      if (!(latest.current.activeModel?.id === target.id && latest.current.status === 'ready')) {
+        setDeep({ phase: 'loading-model', model: target.label });
+        const ok = await latest.current.loadModel({ type: 'library', id: target.id });
+        if (!ok) {
+          await new Promise((r) => setTimeout(r, 0));
+          setDeep({ phase: 'error', message: `Couldn't load ${target.label}: ${latest.current.error ?? 'unknown error'}` });
+          return;
+        }
+      }
+
+      const batches: Candidate[][] = [];
+      for (let i = 0; i < candidates.length; i += BATCH_SIZE) batches.push(candidates.slice(i, i + BATCH_SIZE));
+      const confirmed: AiFinding[] = [];
+      for (const [index, batch] of batches.entries()) {
+        setDeep({ phase: 'asking', done: index, total: batches.length });
+        let raw = '';
+        for await (const token of latest.current.generate(buildBatchPrompt(batch), DEEP_SCAN_SYSTEM)) raw += token;
+        const verdicts = parseVerdicts(stripThinking(raw), batch.length);
+        batch.forEach((candidate, i) => {
+          const verdict = verdicts.get(i + 1);
+          if (!verdict?.secret) return;
+          confirmed.push({
+            id: candidate.id,
+            kind: verdict.kind,
+            path: candidate.path,
+            line: candidate.line,
+            where: candidate.where,
+            commit: candidate.commit,
+            masked: maskValue(candidate.value),
+          });
+        });
+        setAiFindings([...confirmed]);
+      }
+      setDeep({ phase: 'done', considered: linesConsidered, asked: candidates.length });
+    } catch (err) {
+      setDeep({ phase: 'error', message: errorMessage(err) });
+    }
+  };
+
+  const runScan = useCallback(async () => {
+    setPhase('scanning');
+    setError('');
+    setAiFindings([]);
+    setDeep({ phase: 'idle' });
+    try {
+      const result = await gitApi.scanSecrets(repo.root);
+      setScan(result);
+      setSelected(new Set(result.findings.map((f) => f.id)));
+      setPhase('results');
+    } catch (err) {
+      setError(errorMessage(err));
+      setPhase('results');
+    }
+  }, [repo.root]);
+
+  useEffect(() => {
+    void runScan();
+  }, [runScan]);
+
+  const remove = async () => {
+    setPhase('removing');
+    setError('');
+    try {
+      const { summary: result, state } = await gitApi.removeSecrets(repo.root, [...selected]);
+      setSummary(result);
+      onState(state);
+      setPhase('done');
+    } catch (err) {
+      setError(errorMessage(err));
+      setPhase('results');
+    }
+  };
+
+  const push = async () => {
+    try {
+      const { message, state } = await gitApi.forcePush(repo.root, remote, repo.branch);
+      onState(state);
+      onNotify('success', message);
+      setPushed(true);
+    } catch (err) {
+      onNotify('error', errorMessage(err));
+    }
+  };
+
+  const findings = scan?.findings ?? [];
+  const byRule = findings.reduce<Record<string, Finding[]>>((acc, f) => {
+    (acc[f.ruleLabel] ??= []).push(f);
+    return acc;
+  }, {});
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <Modal
+      title="Scan for credentials"
+      subtitle={
+        phase === 'done'
+          ? 'Removal finished.'
+          : 'Looks through your files and every commit for tokens, keys and passwords.'
+      }
+      onClose={onClose}
+      width="wide"
+    >
+      <div className="gs-modal-body gs-scan-body">
+        {phase === 'scanning' && (
+          <div className="gs-scan-empty">
+            <Loader2 className="gs-spin" size={22} />
+            <p>Scanning the working tree and every commit…</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="gs-info-callout danger">
+            <AlertTriangle size={17} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {(phase === 'results' || phase === 'confirm') && scan && (
+          <>
+            <div className={`gs-scan-summary ${findings.length ? 'bad' : 'good'}`}>
+              {findings.length ? <ShieldAlert size={20} /> : <ShieldCheck size={20} />}
+              <div>
+                <strong>
+                  {findings.length
+                    ? `${scan.secretCount} credential${scan.secretCount === 1 ? '' : 's'} in ${findings.length} place${findings.length === 1 ? '' : 's'}`
+                    : 'No credentials found'}
+                </strong>
+                <small>
+                  Scanned {scan.filesScanned} file{scan.filesScanned === 1 ? '' : 's'} and {scan.blobsScanned} version
+                  {scan.blobsScanned === 1 ? '' : 's'} in history
+                  {scan.skipped.large + scan.skipped.binary > 0 &&
+                    ` · skipped ${scan.skipped.large} too large, ${scan.skipped.binary} binary`}
+                  {scan.truncated && ' · stopped early at the scan limit'}
+                </small>
+              </div>
+            </div>
+
+            {findings.length > 0 && phase === 'results' && (
+              <>
+                <div className="gs-scan-actions">
+                  <span className="mono text-[10px]">{selected.size} selected</span>
+                  <button className="gs-button secondary compact" onClick={() => setSelected(new Set(findings.map((f) => f.id)))}>
+                    Select all
+                  </button>
+                  <button className="gs-button secondary compact" onClick={() => setSelected(new Set())}>
+                    Select none
+                  </button>
+                </div>
+                <div className="gs-scan-list">
+                  {Object.entries(byRule).map(([label, group]) => (
+                    <section key={label}>
+                      <h3>
+                        {label} <span>{group.length}</span>
+                      </h3>
+                      {group.map((f) => (
+                        <label className="gs-finding" key={f.id}>
+                          <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
+                          <code>{f.masked}</code>
+                          <span className="gs-finding-path" title={`${f.path}:${f.line}`}>
+                            {f.path}:{f.line}
+                          </span>
+                          <span className={`gs-where ${f.where}`}>
+                            {f.where === 'worktree' ? 'working tree' : `history${f.commit ? ` · ${f.commit}` : ''}`}
+                          </span>
+                        </label>
+                      ))}
+                    </section>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {phase === 'confirm' && (
+              <div className="gs-scan-confirm">
+                <div className="gs-info-callout danger">
+                  <AlertTriangle size={17} />
+                  <span>
+                    This rewrites every commit that contains the {selected.size} selected item
+                    {selected.size === 1 ? '' : 's'}. Commit hashes after that point change, and anyone else with a clone
+                    must re-clone.
+                  </span>
+                </div>
+                <ul className="gs-scan-facts">
+                  <li>A full backup of the current history is saved inside <code>.git</code> first.</li>
+                  <li>Messages, authors and dates are preserved; the values become <code>***REMOVED***</code>.</li>
+                  <li>Your uncommitted changes are kept.</li>
+                  <li>
+                    <b>Rotate these credentials anyway.</b> Anything already pushed or cloned must be treated as leaked.
+                  </li>
+                </ul>
+              </div>
+            )}
+          </>
+        )}
+
+        {phase === 'removing' && (
+          <div className="gs-scan-empty">
+            <Loader2 className="gs-spin" size={22} />
+            <p>Rewriting history…</p>
+          </div>
+        )}
+
+        {phase === 'done' && summary && (
+          <div className="gs-scan-done">
+            <div className="gs-scan-summary good">
+              <CheckCircle2 size={20} />
+              <div>
+                <strong>
+                  {summary.historyRewritten
+                    ? `Rewrote ${summary.commitsRewritten} commit${summary.commitsRewritten === 1 ? '' : 's'}`
+                    : 'Removed from your files'}
+                </strong>
+                <small>
+                  {summary.filesChanged.length} file{summary.filesChanged.length === 1 ? '' : 's'} changed on disk ·{' '}
+                  {summary.blobsRewritten} stored version{summary.blobsRewritten === 1 ? '' : 's'} rewritten
+                  {summary.refsUpdated.length > 0 && ` · ${summary.refsUpdated.length} branch(es) moved`}
+                </small>
+              </div>
+            </div>
+            {summary.backupPath && (
+              <p className="gs-scan-note">
+                Backup of the old history: <code>{summary.backupPath}</code>
+              </p>
+            )}
+            {summary.tagsSkipped.length > 0 && (
+              <p className="gs-scan-note">
+                <FileWarning size={13} /> Tags still point at the old commits: {summary.tagsSkipped.join(', ')}
+              </p>
+            )}
+            {summary.signaturesDropped > 0 && (
+              <p className="gs-scan-note">
+                <FileWarning size={13} /> {summary.signaturesDropped} commit signature(s) dropped — signatures can't
+                cover rewritten content.
+              </p>
+            )}
+            <div className="gs-info-callout danger">
+              <AlertTriangle size={17} />
+              <span>
+                Rotate the credentials you just removed. Copies may exist in clones, forks, CI logs or backups.
+              </span>
+            </div>
+            {summary.historyRewritten && remote && !pushed && (
+              <p className="gs-scan-note">
+                <FileWarning size={13} /> Until you force-push, your local copy still keeps the old commits: they stay
+                reachable through <code>{remote}/{repo.branch}</code>.
+              </p>
+            )}
+            {summary.historyRewritten && remote && (
+              <div className="gs-scan-push">
+                <div>
+                  <strong>Publish the rewritten history</strong>
+                  <small>
+                    Force-pushes <code>{repo.branch}</code> to <code>{remote}</code>. Refused if someone else pushed
+                    since your last fetch.
+                  </small>
+                </div>
+                <button className="gs-button danger" disabled={pushed} onClick={() => void push()}>
+                  <ArrowUpFromLine size={15} /> {pushed ? 'Pushed' : 'Force-push'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="gs-modal-footer">
+        {phase === 'results' && findings.length > 0 && (
+          <>
+            <button className="gs-button secondary" onClick={() => void runScan()}>
+              Re-scan
+            </button>
+            <span className="flex-1" />
+            <button className="gs-button secondary" onClick={onClose}>
+              Close
+            </button>
+            <button className="gs-button danger" disabled={!selected.size} onClick={() => setPhase('confirm')}>
+              <Trash2 size={15} /> Remove {selected.size} selected…
+            </button>
+          </>
+        )}
+        {phase === 'confirm' && (
+          <>
+            <button className="gs-button secondary" onClick={() => setPhase('results')}>
+              Back
+            </button>
+            <span className="flex-1" />
+            <button className="gs-button danger" onClick={() => void remove()}>
+              <Trash2 size={15} /> Yes, remove and rewrite history
+            </button>
+          </>
+        )}
+        {(phase === 'scanning' || phase === 'removing') && (
+          <>
+            <span className="flex-1" />
+            <button className="gs-button secondary" disabled>
+              <Spinner size={14} /> Working…
+            </button>
+          </>
+        )}
+        {(phase === 'done' || (phase === 'results' && findings.length === 0)) && (
+          <>
+            <span className="flex-1" />
+            <button className="gs-button primary" onClick={onClose}>
+              Done
+            </button>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}

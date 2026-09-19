@@ -3,6 +3,7 @@
 // privacy model). Plus JSON export/import for backup & portability.
 
 import type { AgentContextState, AgentView } from './agent/session';
+import type { AttachmentMeta } from './attachments';
 
 export interface StoredMessage {
   id: string;
@@ -13,6 +14,10 @@ export interface StoredMessage {
   sources?: { title: string; url: string; content: string }[];
   /** Agent replies: the steps and prose in order (see lib/agent/session.ts). */
   agent?: Omit<AgentView, 'running' | 'usage'>;
+  /** Emails / Drive / workspace files sent with a user message (titles only). */
+  attachments?: AttachmentMeta[];
+  /** The full text the model received for that message, attachments included. */
+  modelText?: string;
 }
 
 export interface Conversation {

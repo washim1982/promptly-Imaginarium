@@ -4,6 +4,57 @@
 import { cleanError, requireDesktop } from '../desktop';
 import type { AuthInfo, OperationResult, RecentRepo, RepoIdentity, RepoState } from './types';
 
+/** One credential the scan found. The value itself never leaves the main process. */
+export interface Finding {
+  id: string;
+  rule: string;
+  ruleLabel: string;
+  where: 'worktree' | 'history';
+  path: string;
+  line: number;
+  /** The value with its middle replaced by dots. */
+  masked: string;
+  commit?: string;
+  blob?: string;
+}
+
+export interface ScanResult {
+  findings: Finding[];
+  filesScanned: number;
+  blobsScanned: number;
+  skipped: { large: number; binary: number };
+  truncated: boolean;
+  secretCount: number;
+}
+
+/** A line the rules didn't match, for the local model to judge. */
+export interface Candidate {
+  id: string;
+  path: string;
+  line: number;
+  where: 'worktree' | 'history';
+  commit?: string;
+  snippet: string;
+  value: string;
+}
+
+export interface CandidateResult {
+  candidates: Candidate[];
+  linesConsidered: number;
+  truncated: boolean;
+}
+
+export interface RemovalSummary {
+  backupPath: string;
+  filesChanged: string[];
+  blobsRewritten: number;
+  commitsRewritten: number;
+  refsUpdated: string[];
+  tagsSkipped: string[];
+  signaturesDropped: number;
+  historyRewritten: boolean;
+}
+
 interface GitBridge {
   gitVersion(): Promise<string>;
   openRepository(): Promise<RepoState | null>;
@@ -30,6 +81,10 @@ interface GitBridge {
   openInExplorer(repo: string): Promise<void>;
   openTerminal(repo: string): Promise<void>;
   openCreateRemote(repo: string): Promise<void>;
+  scanSecrets(repo: string): Promise<ScanResult>;
+  scanCandidates(repo: string): Promise<CandidateResult>;
+  removeSecrets(repo: string, findingIds: string[]): Promise<{ summary: RemovalSummary; state: RepoState }>;
+  forcePush(repo: string, remote: string, branch: string): Promise<{ message: string; state: RepoState }>;
 }
 
 function bridge(): GitBridge {

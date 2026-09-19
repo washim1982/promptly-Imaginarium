@@ -63,6 +63,41 @@ export async function listDir(root: string, rel: string): Promise<string> {
   return lines.length ? lines.join('\n') : '(empty directory)';
 }
 
+export interface DirEntry {
+  name: string;
+  /** Workspace-relative, forward slashes. */
+  path: string;
+  isDir: boolean;
+  size: number;
+}
+
+/** Structured listing for the sidebar's workspace tree (the tool gets text). */
+export async function listEntries(root: string, rel: string): Promise<DirEntry[]> {
+  const dir = await resolveInside(root, rel, true);
+  const base = assertSafeRelativePath(root, rel || '.').replace(/^\.?\/?$/, '');
+  const entries = await readdir(dir, { withFileTypes: true });
+  entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
+  return Promise.all(
+    entries.slice(0, 500).map(async (e) => ({
+      name: e.name,
+      path: base ? `${base.replace(/\/$/, '')}/${e.name}` : e.name,
+      isDir: e.isDirectory(),
+      size: e.isDirectory() ? 0 : await stat(path.join(dir, e.name)).then((s) => s.size).catch(() => 0),
+    })),
+  );
+}
+
+/** A whole text file, for attaching to a chat message. */
+export async function readForAttach(root: string, rel: string): Promise<{ name: string; text: string }> {
+  const file = await resolveInside(root, rel, true);
+  const st = await stat(file);
+  if (st.isDirectory()) throw new Error(`${rel} is a folder.`);
+  if (st.size > MAX_READ_BYTES) throw new Error(`${rel} is too large to attach (${Math.round(st.size / 1024)} KB, limit ${MAX_READ_BYTES / 1000} KB).`);
+  const buf = await readFile(file);
+  if (looksBinary(buf)) throw new Error(`${rel} looks like a binary file.`);
+  return { name: path.basename(file), text: buf.toString('utf8') };
+}
+
 export async function readTextFile(root: string, rel: string, start?: number, end?: number): Promise<string> {
   const file = await resolveInside(root, rel, true);
   const st = await stat(file);
@@ -199,7 +234,7 @@ export function runCommand(root: string, command: string, timeoutMs = 60_000): P
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-function htmlToText(html: string): { title: string; text: string } {
+export function htmlToText(html: string): { title: string; text: string } {
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim() ?? '';
   const text = html
     .replace(/<!--[\s\S]*?-->/g, ' ')

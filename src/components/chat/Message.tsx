@@ -2,6 +2,7 @@ import type { ChatMessage } from '../../state/LlmContext';
 import { domainOf } from '../../lib/search';
 import Markdown from './Markdown';
 import AgentTimeline from './AgentTimeline';
+import AttachmentChip from './AttachmentChip';
 
 function time(ts: number): string {
   return new Date(ts).toLocaleTimeString([], {
@@ -22,6 +23,13 @@ export default function Message({ message }: { message: ChatMessage }) {
             <span>·</span>
             <span>{time(message.createdAt)}</span>
           </div>
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap justify-end gap-1.5">
+              {message.attachments.map((a, i) => (
+                <AttachmentChip key={i} attachment={a} />
+              ))}
+            </div>
+          )}
           <div className="glass whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed text-white">
             {message.text}
           </div>

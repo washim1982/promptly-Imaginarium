@@ -55,6 +55,12 @@ import type { LlmFn } from '../lib/agent/types';
 import { desktop } from '../lib/desktop';
 import { cleanError, isCancellation } from '../lib/desktop';
 import { stripControlTokens } from '../lib/controlTokens';
+import {
+  attachmentCharBudget,
+  buildPromptWithAttachments,
+  type AttachmentMeta,
+  type ChatAttachment,
+} from '../lib/attachments';
 
 export type EngineStatus =
   | 'checking-gpu'
@@ -78,6 +84,13 @@ export interface ChatMessage {
   sources?: SearchResult[];
   /** Agent-mode replies: tool steps and prose, in order. */
   agent?: AgentView;
+  /** User messages: emails / Drive files / workspace files sent with it. */
+  attachments?: AttachmentMeta[];
+  /**
+   * What the model actually received, when it differs from `text` (the
+   * attachments' contents, wrapped as untrusted data). Used to reseed the model.
+   */
+  modelText?: string;
 }
 
 export interface Workspace {
@@ -115,6 +128,10 @@ interface LlmState {
   agentEnabled: boolean;
   /** Folder the agent's file tools are confined to. */
   workspace: Workspace | null;
+  /** Items from the sidebar waiting to go out with the next message. */
+  attachments: ChatAttachment[];
+  addAttachment: (a: Omit<ChatAttachment, 'id'>) => void;
+  removeAttachment: (id: string) => void;
   // history
   conversations: ConversationMeta[];
   activeConversationId: string | null;
@@ -137,6 +154,7 @@ interface LlmState {
   renameModel: (id: string, label: string) => Promise<void>;
   dismissRejected: () => void;
   updateSettings: (next: Partial<EngineConfig>) => Promise<void>;
+  /** Sends `text` plus any pending attachments. */
   send: (text: string) => Promise<void>;
   /** One-shot streaming generation in an isolated conversation (for tools). */
   generate: (prompt: string, systemPrompt?: string) => AsyncGenerator<string>;
@@ -186,7 +204,7 @@ function loadSettings(): EngineConfig {
 function messagesToTurns(msgs: ChatMessage[]): HistoryTurn[] {
   return msgs
     .filter((m) => m.text.trim())
-    .map((m) => ({ role: m.role, content: m.text }));
+    .map((m) => ({ role: m.role, content: m.modelText ?? m.text }));
 }
 
 function deriveTitle(msgs: ChatMessage[]): string {
@@ -223,6 +241,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     localStorage.getItem(AGENT_KEY) === '1',
   );
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
@@ -399,6 +418,19 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     setWorkspace(await agentBridge().clearWorkspace());
   }, []);
 
+  const addAttachment = useCallback((a: Omit<ChatAttachment, 'id'>) => {
+    setAttachments((list) =>
+      // The same item twice is almost certainly a double click.
+      list.some((x) => x.kind === a.kind && x.title === a.title && x.text === a.text)
+        ? list
+        : [...list, { ...a, id: crypto.randomUUID() }],
+    );
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((list) => list.filter((a) => a.id !== id));
+  }, []);
+
   const resolveApproval = useCallback((stepId: string, approved: boolean) => {
     const resolve = approvalsRef.current.get(stepId);
     approvalsRef.current.delete(stepId);
@@ -516,13 +548,15 @@ export function LlmProvider({ children }: { children: ReactNode }) {
           title: deriveTitle(msgs),
           createdAt: msgs[0]?.createdAt ?? now,
           updatedAt: now,
-          messages: msgs.map(({ id: mid, role, text, createdAt, sources, agent }) => ({
+          messages: msgs.map(({ id: mid, role, text, createdAt, sources, agent, attachments: att, modelText }) => ({
             id: mid,
             role,
             text,
             createdAt,
             ...(sources?.length ? { sources } : {}),
             ...(agent ? { agent: persistableView(agent) } : {}),
+            ...(att?.length ? { attachments: att } : {}),
+            ...(modelText ? { modelText } : {}),
           })),
           ...(agentContextRef.current ? { agentContext: agentContextRef.current } : {}),
         });
@@ -537,7 +571,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const send = useCallback(
     async (text: string) => {
       const engine = engineRef.current;
-      if (!engine || status !== 'ready' || isGenerating || !text.trim()) return;
+      const pending = attachments;
+      if (!engine || status !== 'ready' || isGenerating || (!text.trim() && !pending.length)) return;
 
       // Assign a conversation id on the first message of a new chat.
       let convId = activeIdRef.current;
@@ -547,15 +582,22 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         setActiveConversationId(convId);
       }
 
-      const prompt = text.trim();
+      const prompt = text.trim() || (pending.length === 1 ? 'Summarize the attached item.' : 'Summarize the attached items.');
       const prior = messagesRef.current;
       const agentTurn = agentEnabled;
+      const budget = inputTokenBudget(settings.maxNumTokens, settings.maxOutputTokens);
+      const { modelText, meta } = buildPromptWithAttachments(prompt, pending, attachmentCharBudget(budget));
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
         text: prompt,
         createdAt: Date.now(),
+        ...(meta.length ? { attachments: meta, modelText } : {}),
       };
+      setAttachments([]);
+      // Email / Drive / workspace contents are private: in agent mode, sending
+      // anything off the machine afterwards needs the user's approval.
+      if (pending.length) taintRef.current.privateDataRead = true;
       const assistantId = crypto.randomUUID();
       const update = (fn: (m: ChatMessage) => ChatMessage) =>
         setMessages((ms) => ms.map((m) => (m.id === assistantId ? fn(m) : m)));
@@ -585,8 +627,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
           });
           const { messages: turn, historyIndex } = buildTurnMessages(
             systemPrompt,
-            prior.map(({ role, text: t }) => ({ role, text: t })),
-            prompt,
+            prior.map(({ role, text: t, modelText: mt }) => ({ role, text: mt ?? t })),
+            modelText,
             agentContextRef.current,
           );
           // The loop owns the context: every round becomes a fresh conversation
@@ -605,7 +647,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             messages: turn,
             llm,
             tools: createToolRuntime(taintRef.current),
-            budget: inputTokenBudget(settings.maxNumTokens, settings.maxOutputTokens),
+            budget,
             signal: ctrl.signal,
             onEvent: (event) =>
               update((m) => ({ ...m, agent: applyAgentEvent(m.agent ?? emptyAgentView(), event) })),
@@ -627,7 +669,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             },
           }));
         } else {
-          for await (const token of engine.send(prompt)) {
+          for await (const token of engine.send(modelText)) {
             update((m) => ({ ...m, text: m.text + token }));
           }
         }
@@ -664,7 +706,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [status, isGenerating, persist, agentEnabled, workspace, settings],
+    [status, isGenerating, persist, agentEnabled, workspace, settings, attachments],
   );
 
   // Tool generations in flight (PDF, Research, SVN review). They share the one
@@ -733,8 +775,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     // conversation already read workspace files.
     agentContextRef.current = conv.agentContext;
     taintRef.current = {
-      privateDataRead: msgs.some((m) =>
-        Object.values(m.agent?.steps ?? {}).some((s) => READ_TOOLS.has(s.tool) && s.status === 'done'),
+      privateDataRead: msgs.some(
+        (m) =>
+          Boolean(m.attachments?.length) ||
+          Object.values(m.agent?.steps ?? {}).some((s) => READ_TOOLS.has(s.tool) && s.status === 'done'),
       ),
     };
     setMessages(msgs);
@@ -797,6 +841,9 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       isGenerating,
       agentEnabled,
       workspace,
+      attachments,
+      addAttachment,
+      removeAttachment,
       conversations,
       activeConversationId,
       setChatWidth,
@@ -840,6 +887,9 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       isGenerating,
       agentEnabled,
       workspace,
+      attachments,
+      addAttachment,
+      removeAttachment,
       conversations,
       activeConversationId,
       setChatWidth,

@@ -7,11 +7,16 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import * as git from './gitService';
+import { scanRepository, collectCandidates } from './secretScan';
+import { removeSecrets, forcePush } from './historyRewrite';
 import type { RecentRepo } from './types';
 
 const MAX_RECENT = 20;
 
 const windowOf = (e: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)!;
+
+/** Literal secret values from the last scan, kept out of the renderer. */
+let lastScan: { root: string; secrets: Map<string, string> } | null = null;
 
 function recentFile(): string {
   return path.join(app.getPath('userData'), 'git-recent-repositories.json');
@@ -136,6 +141,46 @@ export function registerGitIpc(): void {
   );
   ipcMain.handle('git:authInfo', () => git.authInfo());
   ipcMain.handle('git:signIn', (_e, repo: string) => git.signIn(repo));
+
+  // ---- credential scan / removal ------------------------------------------------
+  // The scan's literal values stay here; the renderer only ever sees masked
+  // text and finding ids, and asks for removal by id.
+  ipcMain.handle('git:scanSecrets', async (_e, repo: string) => {
+    const root = await git.resolveRepoRoot(repo);
+    const { secrets, ...result } = await scanRepository(root);
+    lastScan = { root, secrets };
+    return result;
+  });
+
+  // Deep scan: lines the rules didn't match, for the local model to judge. The
+  // renderer needs the text itself here — the model runs in the renderer.
+  ipcMain.handle('git:scanCandidates', async (_e, repo: string) => {
+    const root = await git.resolveRepoRoot(repo);
+    if (!lastScan || lastScan.root !== root) throw new Error('Run the scan first.');
+    const known = new Set(lastScan.secrets.values());
+    const result = await collectCandidates(root, known);
+    // Remember each candidate's value so a confirmed one can be removed by id.
+    for (const c of result.candidates) lastScan.secrets.set(c.id, c.value);
+    return result;
+  });
+
+  ipcMain.handle('git:removeSecrets', async (_e, repo: string, findingIds: string[]) => {
+    const root = await git.resolveRepoRoot(repo);
+    if (!lastScan || lastScan.root !== root) throw new Error('Scan the repository again before removing anything.');
+    const values = (Array.isArray(findingIds) ? findingIds : [])
+      .map((id) => lastScan!.secrets.get(String(id)))
+      .filter((v): v is string => Boolean(v));
+    if (!values.length) throw new Error('Select at least one finding to remove.');
+    const summary = await removeSecrets(root, values);
+    lastScan = null; // the ids refer to blobs that no longer exist
+    return { summary, state: await git.getRepoState(root) };
+  });
+
+  ipcMain.handle('git:forcePush', async (_e, repo: string, remote: string, branch: string) => {
+    const root = await git.resolveRepoRoot(repo);
+    const message = await forcePush(root, String(remote ?? ''), String(branch ?? ''));
+    return { message, state: await git.getRepoState(root) };
+  });
 
   ipcMain.handle('git:openExplorer', async (_e, repo: string) => {
     const error = await shell.openPath(await git.resolveRepoRoot(repo));

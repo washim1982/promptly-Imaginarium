@@ -5,11 +5,21 @@
 // and restarts Electron automatically.
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { context } from 'esbuild';
 import { createServer } from 'vite';
 import electronPath from 'electron';
 
 const OUT = 'dist-electron';
+
+// Local credentials (Auth0 / Google OAuth client, OrioSearch URL) live in an
+// untracked .env — see .env.example. They reach the main process as ordinary
+// environment variables, so nothing secret has to be typed into the app or
+// committed.
+if (existsSync('.env')) {
+  process.loadEnvFile('.env');
+  console.log('[dev] loaded .env');
+}
 
 const server = await createServer();
 await server.listen();

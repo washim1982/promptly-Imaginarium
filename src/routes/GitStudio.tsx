@@ -30,6 +30,7 @@ import type { AuthInfo, OperationResult, RecentRepo, RepoState } from '../lib/gi
 import { Modal, Spinner } from '../components/git/Modal';
 import { Sidebar, Welcome } from '../components/git/Sidebar';
 import { RepoWorkspace, type Tab } from '../components/git/Workspace';
+import { SecretScanModal } from '../components/git/SecretScanModal';
 import '../components/git/git-studio.css';
 
 type DialogName = 'clone' | 'settings' | 'newBranch' | 'mergeBranch' | 'remoteProblem' | 'discard' | null;
@@ -84,6 +85,7 @@ export default function GitStudio() {
   const [remoteUrl, setRemoteUrl] = useState('');
   // undefined while the Git Credential Manager check is running.
   const [auth, setAuth] = useState<AuthInfo | null | undefined>(undefined);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -385,6 +387,7 @@ export default function GitStudio() {
           onNewBranch={() => setDialogName('newBranch')}
           onSettings={() => void openSettings()}
           onOpenExplorer={() => void gitApi.openInExplorer(repo.root).catch((e) => notify('error', errorMessage(e)))}
+          onScan={() => setScanOpen(true)}
           onOpenTerminal={() =>
             void gitApi.openTerminal(repo.root).then(
               () => notify('success', 'Terminal opened in this repository.'),
@@ -423,6 +426,15 @@ export default function GitStudio() {
             <X size={14} />
           </button>
         </div>
+      )}
+
+      {scanOpen && repo && (
+        <SecretScanModal
+          repo={repo}
+          onClose={() => setScanOpen(false)}
+          onState={setRepo}
+          onNotify={notify}
+        />
       )}
 
       {dialogName === 'clone' && (

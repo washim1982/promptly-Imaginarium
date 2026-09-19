@@ -71,6 +71,13 @@ const git = {
   openInExplorer: (repo: string) => ipcRenderer.invoke('git:openExplorer', repo),
   openTerminal: (repo: string) => ipcRenderer.invoke('git:openTerminal', repo),
   openCreateRemote: (repo: string) => ipcRenderer.invoke('git:openCreateRemote', repo),
+
+  // Credential scan: find secrets in the working tree and the history, remove
+  // the selected ones (rewriting history), then optionally force-push.
+  scanSecrets: (repo: string) => ipcRenderer.invoke('git:scanSecrets', repo),
+  scanCandidates: (repo: string) => ipcRenderer.invoke('git:scanCandidates', repo),
+  removeSecrets: (repo: string, findingIds: string[]) => ipcRenderer.invoke('git:removeSecrets', repo, findingIds),
+  forcePush: (repo: string, remote: string, branch: string) => ipcRenderer.invoke('git:forcePush', repo, remote, branch),
 };
 
 export interface ModelEntry {
@@ -114,6 +121,36 @@ const agent = {
   writeFile: (rel: string, content: string) => ipcRenderer.invoke('agent:writeFile', rel, content),
   runCommand: (command: string) => ipcRenderer.invoke('agent:runCommand', command),
   fetchUrl: (url: string) => ipcRenderer.invoke('agent:fetchUrl', url),
+  listEntries: (rel: string) => ipcRenderer.invoke('agent:listEntries', rel),
+  readForAttach: (rel: string) => ipcRenderer.invoke('agent:readForAttach', rel),
+};
+
+// Chat sidebar: Google account (read-only Gmail + Drive). Tokens stay in main;
+// see electron/google/.
+const google = {
+  status: () => ipcRenderer.invoke('google:status'),
+  saveClient: (input: { clientId: string; clientSecret: string }) => ipcRenderer.invoke('google:saveClient', input),
+  clearClient: () => ipcRenderer.invoke('google:clearClient'),
+  connect: () => ipcRenderer.invoke('google:connect'),
+  cancelConnect: () => ipcRenderer.invoke('google:cancelConnect'),
+  disconnect: () => ipcRenderer.invoke('google:disconnect'),
+  listMail: (query: string, pageToken?: string) => ipcRenderer.invoke('gmail:list', query, pageToken),
+  getMail: (id: string) => ipcRenderer.invoke('gmail:get', id),
+  listDrive: (search: string, folderId?: string, pageToken?: string) =>
+    ipcRenderer.invoke('drive:list', search, folderId, pageToken),
+  getDriveFile: (id: string) => ipcRenderer.invoke('drive:get', id),
+};
+
+// Optional app login (Auth0) — required before connecting Google. Tokens stay
+// in main; see electron/auth0/.
+const auth0 = {
+  status: () => ipcRenderer.invoke('auth0:status'),
+  verify: () => ipcRenderer.invoke('auth0:verify'),
+  saveClient: (input: { domain: string; clientId: string }) => ipcRenderer.invoke('auth0:saveClient', input),
+  clearClient: () => ipcRenderer.invoke('auth0:clearClient'),
+  login: () => ipcRenderer.invoke('auth0:login'),
+  cancelLogin: () => ipcRenderer.invoke('auth0:cancelLogin'),
+  logout: () => ipcRenderer.invoke('auth0:logout'),
 };
 
 const bridge = {
@@ -165,6 +202,8 @@ const bridge = {
   svn,
   git,
   agent,
+  google,
+  auth0,
 };
 
 export type DesktopBridge = typeof bridge;

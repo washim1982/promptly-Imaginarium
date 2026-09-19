@@ -174,6 +174,43 @@ Requires Git for Windows. Credentials stay in Windows Credential Manager, and
 Git Studio never sees or stores them. Git runs in the main process
 (`electron/git/`), never through a shell.
 
+### Scan: find and remove credentials (not in Git Pilot)
+
+**Scan** in the repository header looks for tokens, keys and passwords in two
+places: the files as they are now (tracked and untracked, respecting
+`.gitignore`) and **every blob in the history** — a credential deleted in a
+later commit is still in the repository, which is the case that matters.
+
+It knows AWS keys, GitHub/GitLab/Slack/Stripe/npm tokens, Google API keys and
+OAuth client secrets, OpenAI and Anthropic keys, private-key blocks, JWTs,
+connection strings with a password, and `password` / `secret` / `api_key`
+assignments. Obvious placeholders (`changeme`, `process.env.X`, `${VAR}`,
+`your-secret-here`) are ignored, and a line marked `secret-scan:ignore` is
+skipped. Findings are listed masked (`ghp_••••••Qw`) with the file, line and
+the commit each one came from; **the values themselves never leave the main
+process**.
+
+Tick what to remove, then confirm. Removal:
+- writes a **bundle of the whole history first** (`.git/imaginarium-backups/`),
+  so the rewrite can be undone with `git clone <bundle>`;
+- replaces the values with `***REMOVED***` in your files and in every commit
+  that contains them, using git plumbing — messages, authors and dates are
+  preserved, and commits from before the credential appeared keep their hashes;
+- keeps your uncommitted changes;
+- then offers **Force-push**, which uses `--force-with-lease`, so it is refused
+  if someone else pushed since your last fetch.
+
+Limits worth knowing:
+- Files over 5 MB and binary files aren't scanned; the count of skipped files
+  is shown so this is never silent.
+- Until you force-push, the old commits stay reachable locally through
+  `origin/<branch>`. The UI says so.
+- Annotated tags are left pointing at the old commits, and commit signatures on
+  rewritten commits are dropped (a signature can't cover changed content). Both
+  are reported.
+- **Rewriting is not a substitute for rotating.** Anything pushed, cloned, or
+  captured by CI must be treated as leaked: revoke and reissue it.
+
 ### Behaviour that differs from Git Pilot (bug fixes)
 
 | Git Pilot | Git Studio |
@@ -192,6 +229,139 @@ Git Studio never sees or stores them. Git runs in the main process
 
 Not ported: Git Pilot's light/system theme picker (Imaginarium is dark-only and
 follows the accent from Settings) and its browser demo mode.
+
+## Chat sidebar
+
+The chat page has a sidebar on the left. You can collapse it to an icon rail,
+and it remembers the section you had open.
+
+- **New chat**
+- **Email:** your Gmail inbox. You can search it with Gmail syntax (`from:`,
+  `subject:`, `has:attachment`, …), open a message, and **Attach to chat**.
+- **Google Drive:** browse My Drive folder by folder, or search all of Drive.
+  Docs, Sheets and Slides are exported as text. PDFs are read on this PC with
+  pdf.js. Text files are read as-is.
+- **Workspace:** the agent's workspace folder as a file tree. You can preview a
+  file and attach it, change the folder, or toggle Agent mode.
+- **History:** your saved chats, with a filter.
+
+You can send a message with attachments and no text; it then asks for a
+summary. The model receives each attachment inside the same untrusted-data
+wrapper it uses for tool output. The wrapper is escaped, so an email saying
+"ignore your instructions…" is treated as content, not a command. Attachments
+share at most 60% of the context budget and are cut head+tail to fit. Sent
+messages show a chip per attachment, and the full text is saved with the chat
+so reloading it keeps the context. In Agent mode, attaching private content
+turns on the approval gate for web tools, just as reading workspace files does.
+
+### App login (Auth0)
+
+The **Log in (optional)** button sits at the bottom of the chat sidebar.
+Chatting never needs it, but **Email and Google Drive do**: until you log in,
+those sections show "Log in to use Email". The main process enforces this too,
+not just the UI.
+
+A connected Google account belongs to the Auth0 user who connected it:
+- **Logging out** locks Gmail/Drive, and the same user gets them back after
+  logging in again.
+- **A different user** logging in on this PC never sees that mailbox. The link
+  is dropped and they connect their own.
+
+How login works:
+- It uses Authorization Code + PKCE in your browser, with a fixed loopback
+  callback.
+- There is no client secret: a Native app is a public client.
+- The ID token is checked for issuer, audience, expiry and nonce.
+- The refresh token is encrypted with DPAPI and confirmed with Auth0 once per
+  launch (rotated if rotation is on). A revoked session logs out; being offline
+  does not.
+- **Log out** revokes the refresh token at Auth0.
+
+Setup in the [Auth0 Dashboard](https://manage.auth0.com/) → Applications → your
+**Native** application:
+
+1. **Settings → Application URIs → Allowed Callback URLs:** add
+   `http://127.0.0.1:47823/callback` exactly (Auth0 matches the port too), then
+   **Save**.
+2. **Settings → Advanced → Grant Types:** make sure **Authorization Code** and
+   **Refresh Token** are ticked (the defaults for Native apps).
+3. *(Recommended)* **Settings → Refresh Token Rotation:** turn on Rotation.
+4. **Connections** tab: enable the login methods you want, e.g.
+   Username-Password and/or Google.
+5. In Imaginarium, click **Log in (optional)**, paste the **Domain** (e.g.
+   `your-tenant.us.auth0.com`) and **Client ID** from Settings → Basic
+   Information, then **Save** → **Log in**. Auth0's login page opens in your
+   browser.
+
+Alternatively, put the values in an untracked `.env` (copy `.env.example`):
+`npm run dev` loads it, and environment variables win over anything saved in
+the app. Never put the client secret anywhere; it isn't used. If port 47823 is taken by
+another program, the app says so instead of hanging.
+
+The Auth0 login and the Google connection are separate: logging in with Auth0's
+Google button does *not* grant Gmail access. You still click **Connect Google
+account** once, which uses the Google client below.
+
+### Google account (Email & Drive)
+
+Requires the Auth0 login above. Access is **read-only** (`gmail.readonly`, `drive.readonly`), so nothing can be
+sent, changed or deleted. Mail and files are read by the main process, and only
+the local model sees them. Imaginarium signs in with the flow Google recommends
+for desktop apps:
+- The consent page opens in your own browser, and Google redirects back to a
+  one-time listener on `127.0.0.1`. The request is protected with PKCE and a
+  random `state` value.
+- The refresh token is encrypted with Windows DPAPI (`safeStorage`) and never
+  reaches the renderer.
+- **Disconnect** revokes the token at Google and deletes it.
+
+You need your own OAuth client. Google does not let one be shipped inside the
+app, and setting one up is free and takes about 5 minutes.
+
+1. **Create a project.** Go to
+   [console.cloud.google.com](https://console.cloud.google.com/) and create a
+   new project, e.g. "Imaginarium".
+2. **Enable the APIs.** Under APIs & Services → Library, enable **Gmail API**
+   and **Google Drive API**.
+3. **Set up the OAuth consent screen.** Under APIs & Services → OAuth consent
+   screen (called "Google Auth Platform" in newer consoles):
+   - User type: **External**. Give it an app name and your email.
+   - Scopes: add `.../auth/gmail.readonly` and `.../auth/drive.readonly`.
+   - Audience / **Test users:** add the Gmail address(es) you will connect.
+4. **Create the client.** Under Credentials → Create credentials → **OAuth
+   client ID**, choose Application type **Desktop app**, then Create. Copy the
+   **Client ID** and **Client secret**.
+5. **Connect in Imaginarium.** Log in (Auth0) first. Then open Chat → sidebar → **Email**, paste both
+   values, then **Save** → **Connect Google account**. Your browser opens.
+   Pick the account and continue past the "Google hasn't verified this app"
+   screen (it's your own app: Advanced → Go to …). Leave both permissions
+   ticked. The sidebar then shows your inbox.
+
+Alternatively, put `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in
+`.env` (copy `.env.example`; `npm run dev` loads it). They take precedence over
+the saved values.
+
+**Credentials and version control.** `.env` and the app's own credential files
+(`auth0-client.json`, `google-oauth-client.json`, the encrypted `*.bin` token
+files) are in `.gitignore`; only `.env.example`, with placeholder names, is
+committed. Client IDs and tokens the app saves at runtime live in
+`%APPDATA%\Imaginarium\`, outside the repository.
+
+**One set of credentials for every PC.** The Auth0 application and the Google
+OAuth client are created once, not per machine: each user just logs in and
+approves access on their own PC, where their own tokens are stored. While the
+Google project is in Testing, each of those accounts must be on its Test users
+list (max 100, re-consent every 7 days).
+
+Notes:
+- While the consent screen is in **Testing** status, Google expires sign-ins
+  after **7 days**. Imaginarium then says the sign-in expired; click Connect
+  again. Publishing the app to Production (APIs & Services → OAuth consent
+  screen → Publish) removes the limit. Restricted scopes such as Gmail then
+  show the unverified-app warning, which is fine for personal use.
+- One Google account is connected at a time. Disconnect it to switch accounts.
+- Email attachments (the files on a message) are listed but not read. Scanned
+  PDFs with no text layer can't be read either; use PDF Tools → OCR.
 
 ## Agent mode (chat)
 
@@ -248,7 +418,9 @@ from its own knowledge.
 electron/       main.ts (app:// protocol, model registry + streaming, IPC)
                 preload.ts (the renderer's entire native surface)
                 svn/ (svn CLI discovery + operations, AI context, settings, IPC)
-                git/ (git operations, recent repositories, IPC)
+                git/ (git operations, credential scan + history rewrite, IPC)
+                google/ (OAuth sign-in, read-only Gmail + Drive, IPC)
+                auth0/ (optional app login, gates Google) · oauth/ (shared PKCE + loopback)
                 agent/ (workspace-sandboxed file/command/fetch tools, IPC)
 scripts/        dev.mjs · build-electron.mjs · vendor-assets.mjs
 src/lib/        desktop (bridge) · modelStore (replaces the OPFS cache) ·
