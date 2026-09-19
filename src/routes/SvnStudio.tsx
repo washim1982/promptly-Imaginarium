@@ -1,6 +1,7 @@
 // SVN Studio, as a tab of Imaginarium. Port of SVN Studio's web/client/src/App.tsx:
-// same three-panel IDE (Explorer · editor · Source Control / History), activity
-// bar, command palette and status bar. SVN calls go to the Electron main process
+// same three-panel IDE (Explorer · editor · Source Control / History), command
+// palette and status bar. The activity bar is gone: the toolbar toggles the
+// panels and History opens from the Source Control header. SVN calls go to the Electron main process
 // instead of an Express server, and AI review runs on the in-app LiteRT-LM engine
 // with gemma-4-E4B-it-web instead of an external OpenAI-compatible endpoint.
 
@@ -20,7 +21,6 @@ import {
   stripThinking,
 } from '../lib/svn/review';
 import { usePrompt } from '../components/PromptDialog';
-import { ActivityBar, type ActivityView } from '../components/svn/ActivityBar';
 import { CommandPalette, type PaletteCommand } from '../components/svn/CommandPalette';
 import { StatusBar } from '../components/svn/StatusBar';
 import { FileTree, type FileTreeActions } from '../components/svn/FileTree';
@@ -46,8 +46,8 @@ const RIGHT_DEFAULT = 360;
 const LEFT_MIN = 190;
 const RIGHT_MIN = 280;
 const PANEL_MAX = 720;
-// Activity bar + a usable minimum editor width + gaps and side padding.
-const RESERVED_FOR_EDITOR = 56 + 360 + 72;
+// A usable minimum editor width + gaps and side padding.
+const RESERVED_FOR_EDITOR = 360 + 72;
 
 function clampPanel(value: number, min: number, otherPanelWidth: number): number {
   const max = Math.min(PANEL_MAX, window.innerWidth - otherPanelWidth - RESERVED_FOR_EDITOR);
@@ -95,7 +95,9 @@ export default function SvnStudio() {
   const [loadingFile, setLoadingFile] = useState(false);
   const [editable, setEditable] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [activeView, setActiveView] = useState<ActivityView>('commit');
+  // What the right-hand panel shows. History opens from the button in the
+  // Source Control header (SVN Studio's activity bar was removed).
+  const [activeView, setActiveView] = useState<'commit' | 'history'>('commit');
   const [historyEntries, setHistoryEntries] = useState<SvnLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyScope, setHistoryScope] = useState<string | null>(null);
@@ -442,15 +444,6 @@ export default function SvnStudio() {
     { id: 'settings', label: 'Preferences: SVN Settings', run: () => setSettingsOpen(true) },
   ];
 
-  function selectView(view: ActivityView) {
-    if (view === 'history') void loadHistory(historyScope ?? undefined);
-    else {
-      setActiveView(view);
-      if (view === 'explorer') setLeftPanelVisible(true);
-      else setRightPanelVisible(true);
-    }
-  }
-
   // ---- render ---------------------------------------------------------------------------
 
   return (
@@ -517,13 +510,6 @@ export default function SvnStudio() {
       </div>
 
       <div className="svn-workspace">
-        <ActivityBar
-          active={activeView}
-          onSelect={selectView}
-          onOpenSettings={() => setSettingsOpen(true)}
-          changedCount={changedCount}
-        />
-
         {leftPanelVisible && (
           <>
             <div className="svn-panel" style={{ width: leftWidth }}>
@@ -595,6 +581,7 @@ export default function SvnStudio() {
               ) : (
                 <CommitPanel
                   tree={tree}
+                  onShowHistory={() => void loadHistory(undefined)}
                   busy={busy}
                   onCommit={(paths, message) =>
                     withBusy(async () => {

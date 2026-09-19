@@ -3,10 +3,12 @@ import type { AiScope, SvnTreeNode } from '../../lib/svn/types';
 import { collectChangedPaths, defaultCommitSelection, pruneToChanges } from '../../lib/svn/utils';
 import { AiAssistBox, type ReviewModelState } from './AiAssistBox';
 import { ChangesTree } from './ChangesTree';
-import { IconCheck, IconDownload, IconSend, IconSparkle } from './icons';
+import { IconCheck, IconDownload, IconHistory, IconSend, IconSparkle } from './icons';
 
 interface CommitPanelProps {
   tree: SvnTreeNode | null;
+  /** Switch this panel to the working copy's history. */
+  onShowHistory: () => void;
   onCommit: (paths: string[], message: string) => Promise<boolean>;
   onUpdate: () => void;
   onRevert: (paths: string[]) => void;
@@ -22,6 +24,7 @@ interface CommitPanelProps {
 
 export function CommitPanel({
   tree,
+  onShowHistory,
   onCommit,
   onUpdate,
   onRevert,
@@ -90,7 +93,14 @@ export function CommitPanel({
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="svn-panel__header">
         <span className="svn-panel__status svn-label">
-          <span className={`svn-panel__dot ${changedPaths.length > 0 ? 'svn-panel__dot--dirty' : 'svn-panel__dot--clean'}`} />
+          <button
+            className={`svn-panel__history ${changedPaths.length > 0 ? 'svn-panel__history--dirty' : ''}`}
+            onClick={onShowHistory}
+            title="History"
+            aria-label="Show history"
+          >
+            <IconHistory size={15} />
+          </button>
           {changedPaths.length > 0
             ? `${changedPaths.length} change${changedPaths.length === 1 ? '' : 's'}`
             : 'Clean'}

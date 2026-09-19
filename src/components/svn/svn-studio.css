@@ -316,81 +316,6 @@
     line-height: 1.5;
   }
 
-  /* ---- Activity bar ------------------------------------------------------------- */
-
-  & .svn-activity {
-    width: 56px;
-    flex-shrink: 0;
-    background: var(--svn-surface);
-    border: 1px solid var(--svn-border);
-    border-radius: var(--svn-radius-lg);
-    backdrop-filter: blur(14px);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px 0;
-  }
-
-  & .svn-activity__items {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-
-  & .svn-activity__item {
-    position: relative;
-    width: 42px;
-    height: 42px;
-    display: grid;
-    place-items: center;
-    background: transparent;
-    border: none;
-    border-radius: var(--svn-radius-md);
-    color: var(--svn-muted);
-    transition:
-      background var(--svn-fast),
-      color var(--svn-fast);
-  }
-
-  & .svn-activity__item:hover {
-    color: var(--svn-text);
-    background: var(--svn-surface-2);
-  }
-
-  & .svn-activity__item--active {
-    color: var(--svn-accent);
-    background: var(--svn-accent-tint);
-  }
-
-  & .svn-activity__indicator {
-    position: absolute;
-    left: -8px;
-    top: 9px;
-    bottom: 9px;
-    width: 3px;
-    border-radius: 2px;
-    background: var(--svn-accent);
-    box-shadow: var(--svn-glow);
-  }
-
-  & .svn-activity__badge {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: var(--svn-accent);
-    color: #000;
-    font-size: 9px;
-    font-weight: 700;
-    display: grid;
-    place-items: center;
-  }
-
   /* ---- Explorer tree ----------------------------------------------------------------- */
 
   & .svn-explorer-header {
@@ -756,20 +681,35 @@
     gap: 8px;
   }
 
-  & .svn-panel__dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+  /* History button — sits where SVN Studio's clean/dirty status dot was, and
+     keeps its colour cue: green when clean, accent when there are changes. */
+  & .svn-panel__history {
+    width: 26px;
+    height: 26px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--svn-success) 35%, transparent);
+    border-radius: var(--svn-radius-sm);
+    background: color-mix(in srgb, var(--svn-success) 12%, transparent);
+    color: var(--svn-success);
+    transition:
+      background var(--svn-fast),
+      border-color var(--svn-fast);
   }
 
-  & .svn-panel__dot--clean {
-    background: var(--svn-success);
-    box-shadow: 0 0 8px var(--svn-success);
+  & .svn-panel__history:hover {
+    background: color-mix(in srgb, var(--svn-success) 22%, transparent);
   }
 
-  & .svn-panel__dot--dirty {
-    background: var(--svn-accent);
-    box-shadow: var(--svn-glow);
+  & .svn-panel__history--dirty {
+    border-color: color-mix(in srgb, var(--svn-accent) 40%, transparent);
+    background: var(--svn-accent-tint);
+    color: var(--svn-accent);
+  }
+
+  & .svn-panel__history--dirty:hover {
+    background: color-mix(in srgb, var(--svn-accent) 24%, transparent);
   }
 
   & .svn-composer {
