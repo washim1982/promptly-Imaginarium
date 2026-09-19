@@ -2,7 +2,76 @@
 // Deliberately narrow: model library management, app info, and opening external
 // links. No filesystem access, no arbitrary IPC.
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
+
+// SVN Studio tab. Thin passthroughs — shapes and validation live in
+// electron/svn/ipc.ts, typed for the renderer in src/lib/svn/api.ts.
+const svn = {
+  getSettings: () => ipcRenderer.invoke('svn:getSettings'),
+  saveSettings: (input: unknown) => ipcRenderer.invoke('svn:saveSettings', input),
+  detect: (svnPath?: string) => ipcRenderer.invoke('svn:detect', svnPath),
+  checkout: () => ipcRenderer.invoke('svn:checkout'),
+  relink: (workingCopyPath: string) => ipcRenderer.invoke('svn:relink', workingCopyPath),
+  browseFolder: (title?: string) => ipcRenderer.invoke('svn:browseFolder', title),
+  browseSvnExe: () => ipcRenderer.invoke('svn:browseSvnExe'),
+
+  tree: () => ipcRenderer.invoke('svn:tree'),
+  status: () => ipcRenderer.invoke('svn:status'),
+  file: (path: string) => ipcRenderer.invoke('svn:file', path),
+  diff: (path: string) => ipcRenderer.invoke('svn:diff', path),
+  history: (path?: string) => ipcRenderer.invoke('svn:history', path),
+
+  saveFile: (path: string, content: string) => ipcRenderer.invoke('svn:saveFile', path, content),
+  createFile: (path: string) => ipcRenderer.invoke('svn:createFile', path),
+  createFolder: (path: string) => ipcRenderer.invoke('svn:createFolder', path),
+  delete: (path: string) => ipcRenderer.invoke('svn:delete', path),
+  rename: (from: string, to: string) => ipcRenderer.invoke('svn:rename', from, to),
+  commit: (paths: string[], message: string) => ipcRenderer.invoke('svn:commit', paths, message),
+  update: () => ipcRenderer.invoke('svn:update'),
+  revert: (paths: string[]) => ipcRenderer.invoke('svn:revert', paths),
+  lock: (path: string, message?: string) => ipcRenderer.invoke('svn:lock', path, message),
+  unlock: (path: string) => ipcRenderer.invoke('svn:unlock', path),
+
+  uploadPick: (targetFolder: string, kind: 'files' | 'folder') =>
+    ipcRenderer.invoke('svn:uploadPick', targetFolder, kind),
+  importPaths: (targetFolder: string, sources: string[]) =>
+    ipcRenderer.invoke('svn:importPaths', targetFolder, sources),
+  /** Real on-disk path of a dropped File (File.path no longer exists). */
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+
+  aiContext: (scope: unknown, budget: number) => ipcRenderer.invoke('svn:aiContext', scope, budget),
+};
+
+// Git Studio tab (Git Pilot port). Handlers live in electron/git/ipc.ts,
+// typed for the renderer in src/lib/git/api.ts.
+const git = {
+  gitVersion: () => ipcRenderer.invoke('git:gitVersion'),
+  openRepository: () => ipcRenderer.invoke('git:openRepository'),
+  chooseFolder: () => ipcRenderer.invoke('git:chooseFolder'),
+  getRecentRepositories: () => ipcRenderer.invoke('git:recent'),
+  forgetRepository: (repoPath: string) => ipcRenderer.invoke('git:forget', repoPath),
+  loadRepository: (repoPath: string) => ipcRenderer.invoke('git:load', repoPath),
+  cloneRepository: (input: { url: string; parent: string; name?: string }) => ipcRenderer.invoke('git:clone', input),
+  initRepository: (folder: string) => ipcRenderer.invoke('git:init', folder),
+  stage: (repo: string, files: string[]) => ipcRenderer.invoke('git:stage', repo, files),
+  unstage: (repo: string, files: string[]) => ipcRenderer.invoke('git:unstage', repo, files),
+  discard: (repo: string, files: string[]) => ipcRenderer.invoke('git:discard', repo, files),
+  commit: (repo: string, message: string) => ipcRenderer.invoke('git:commit', repo, message),
+  fetch: (repo: string) => ipcRenderer.invoke('git:fetch', repo),
+  pull: (repo: string) => ipcRenderer.invoke('git:pull', repo),
+  push: (repo: string) => ipcRenderer.invoke('git:push', repo),
+  switchBranch: (repo: string, branch: string) => ipcRenderer.invoke('git:switchBranch', repo, branch),
+  createBranch: (repo: string, branch: string) => ipcRenderer.invoke('git:createBranch', repo, branch),
+  mergeBranch: (repo: string, source: string) => ipcRenderer.invoke('git:mergeBranch', repo, source),
+  addRemote: (repo: string, name: string, url: string) => ipcRenderer.invoke('git:addRemote', repo, name, url),
+  saveIdentity: (repo: string, identity: { name: string; email: string }, global: boolean) =>
+    ipcRenderer.invoke('git:saveIdentity', repo, identity, global),
+  authInfo: () => ipcRenderer.invoke('git:authInfo'),
+  signIn: (repo: string) => ipcRenderer.invoke('git:signIn', repo),
+  openInExplorer: (repo: string) => ipcRenderer.invoke('git:openExplorer', repo),
+  openTerminal: (repo: string) => ipcRenderer.invoke('git:openTerminal', repo),
+  openCreateRemote: (repo: string) => ipcRenderer.invoke('git:openCreateRemote', repo),
+};
 
 export interface ModelEntry {
   id: string;
@@ -32,6 +101,20 @@ export interface AppInfo {
   chrome: string;
   searchApi: string;
 }
+
+// Chat agent tools. The workspace root is held by main; calls take only
+// workspace-relative paths.
+const agent = {
+  getWorkspace: () => ipcRenderer.invoke('agent:getWorkspace'),
+  pickWorkspace: () => ipcRenderer.invoke('agent:pickWorkspace'),
+  clearWorkspace: () => ipcRenderer.invoke('agent:clearWorkspace'),
+  listDir: (rel: string) => ipcRenderer.invoke('agent:listDir', rel),
+  readFile: (rel: string, start?: number, end?: number) => ipcRenderer.invoke('agent:readFile', rel, start, end),
+  searchFiles: (pattern: string, glob?: string) => ipcRenderer.invoke('agent:searchFiles', pattern, glob),
+  writeFile: (rel: string, content: string) => ipcRenderer.invoke('agent:writeFile', rel, content),
+  runCommand: (command: string) => ipcRenderer.invoke('agent:runCommand', command),
+  fetchUrl: (url: string) => ipcRenderer.invoke('agent:fetchUrl', url),
+};
 
 const bridge = {
   isDesktop: true as const,
@@ -78,6 +161,10 @@ const bridge = {
 
   storageUsage: (): Promise<{ managedBytes: number; directory: string }> =>
     ipcRenderer.invoke('storage:usage'),
+
+  svn,
+  git,
+  agent,
 };
 
 export type DesktopBridge = typeof bridge;

@@ -20,6 +20,9 @@ import { ControlTokenFilter } from './controlTokens';
 // scripts/vendor-assets.mjs copied into public/litertlm/.
 const WASM_DIR = new URL('litertlm/', document.baseURI).href;
 
+/** Top-K ceiling the GPU sampler is built for (the Settings slider goes to 128). */
+const MAX_TOP_K = 128;
+
 type Core = typeof import('@litert-lm/core');
 
 let corePromise: Promise<Core> | null = null;
@@ -66,6 +69,8 @@ function messageText(msg: Message): string {
 
 export class LlmEngine {
   private engine: Engine | null = null;
+  /** Top-K the engine's sampler accepts; sessions are clamped to it. */
+  private maxTopK = MAX_TOP_K;
   private conversation: Conversation | null = null;
   private oneShot: Conversation | null = null;
   private generating = false;
@@ -92,7 +97,7 @@ export class LlmEngine {
     const { SamplerType } = await loadCore();
     return {
       type: SamplerType.TOP_P,
-      k: this.config.topK,
+      k: Math.max(1, Math.min(this.config.topK, this.maxTopK)),
       p: this.config.topP,
       temperature: this.config.temperature,
     };
@@ -107,8 +112,35 @@ export class LlmEngine {
     const { Engine } = await loadCore();
     this.engine = await Engine.create({
       model,
-      mainExecutorSettings: { maxNumTokens: this.config.maxNumTokens },
+      mainExecutorSettings: {
+        maxNumTokens: this.config.maxNumTokens,
+        // The default GPU_ARTISAN backend compiles its sampler for
+        // max_top_k = 1, and every session asking for more is rejected with
+        // "Top-K value N must be <= 1" — so sampling with a real top-K (which
+        // is what keeps decoding out of greedy repetition loops) needs the
+        // limit raised when the engine is created. The other fields are the
+        // runtime's own defaults, read back from a live engine's settings; the
+        // SDK requires the whole object, not a patch.
+        backendConfig: {
+          num_output_candidates: 1,
+          wait_for_weight_uploads: false,
+          num_decode_steps_per_sync: 1,
+          sequence_batch_size: 0,
+          supported_lora_ranks: [],
+          max_top_k: MAX_TOP_K,
+          enable_decode_logits: false,
+          enable_external_embeddings: false,
+          use_submodel: false,
+        },
+      },
     });
+    // Whatever the runtime actually accepted is the ceiling for sessions.
+    const effective = (this.engine as unknown as { settings?: { mainExecutorSettings?: { backendConfig?: { max_top_k?: number } } } })
+      .settings?.mainExecutorSettings?.backendConfig?.max_top_k;
+    this.maxTopK = typeof effective === 'number' && effective > 0 ? effective : MAX_TOP_K;
+    if (this.maxTopK < this.config.topK) {
+      console.warn(`[engine] runtime caps top-K at ${this.maxTopK}; requested ${this.config.topK} will be clamped`);
+    }
     await this.openConversation([]);
   }
 
@@ -197,6 +229,36 @@ export class LlmEngine {
     });
     try {
       yield* this.stream(this.oneShot, prompt);
+    } finally {
+      await this.oneShot?.delete().catch(() => {});
+      this.oneShot = null;
+    }
+  }
+
+  /**
+   * Generate from an explicit message list, in a throwaway conversation.
+   *
+   * The chat path lets the LiteRT-LM Conversation keep history internally,
+   * which leaves nothing to trim or compact. The agent loop instead owns its
+   * message list and rebuilds the model's context from it every round — as
+   * Odysseus re-sends `messages` to the API each round — so context management
+   * is entirely in the loop's hands. Everything but the final message becomes
+   * the preface; the final (user-role) message is the prompt.
+   */
+  async *generateFrom(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): AsyncGenerator<string> {
+    if (!this.engine) throw new Error('Engine not initialized');
+    if (!messages.length) return;
+    const last = messages[messages.length - 1];
+    const preface = messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+    this.oneShot = await this.engine.createConversation({
+      preface: preface.length ? { messages: preface } : undefined,
+      sessionConfig: {
+        samplerParams: await this.samplerParams(),
+        maxOutputTokens: this.config.maxOutputTokens,
+      },
+    });
+    try {
+      yield* this.stream(this.oneShot, last.content);
     } finally {
       await this.oneShot?.delete().catch(() => {});
       this.oneShot = null;

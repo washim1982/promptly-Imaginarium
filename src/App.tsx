@@ -1,5 +1,5 @@
 import { Suspense, lazy, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import Background from './components/shell/Background';
 import TopNav from './components/shell/TopNav';
 import Footer from './components/shell/Footer';
@@ -11,9 +11,16 @@ import Research from './routes/Research';
 
 // pdf.js is heavy; only load it when the PDF Tools route is visited.
 const PdfTools = lazy(() => import('./routes/PdfTools'));
+// Likewise Monaco (several MB) for the SVN Studio tab.
+const SvnStudio = lazy(() => import('./routes/SvnStudio'));
+const GitStudio = lazy(() => import('./routes/GitStudio'));
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // SVN Studio and Git Studio are full-height workspaces; the app footer
+  // would just stack a second strip under them.
+  const { pathname } = useLocation();
+  const fullBleed = pathname.startsWith('/svn') || pathname.startsWith('/git');
 
   return (
     <div className="flex h-full flex-col">
@@ -35,6 +42,8 @@ export default function App() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/research" element={<Research />} />
             <Route path="/pdf" element={<PdfTools />} />
+            <Route path="/svn" element={<SvnStudio />} />
+            <Route path="/git" element={<GitStudio />} />
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={<Navigate to="/chat" replace />} />
@@ -42,7 +51,7 @@ export default function App() {
         </Suspense>
       </main>
 
-      <Footer />
+      {!fullBleed && <Footer />}
 
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
     </div>

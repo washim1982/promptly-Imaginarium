@@ -87,13 +87,22 @@ export default function CodeBlock({
         style={oneDark}
         showLineNumbers
         wrapLongLines
+        // With wrapLongLines + showLineNumbers the library makes every line
+        // `display: flex`, which turns each highlighted token into its own flex
+        // item — a long line then wraps token-by-token and renders out of order.
+        // A block with a hanging indent wraps as text should, and continuation
+        // rows line up after the line-number gutter (2.2em + 1em padding).
+        lineProps={{
+          style: { display: 'block', paddingLeft: '3.2em', textIndent: '-3.2em', wordBreak: 'break-word' },
+        }}
         customStyle={{
           margin: 0,
           background: '#0b0d12',
           fontSize: '13px',
           padding: '14px 12px',
         }}
-        lineNumberStyle={{ color: 'rgba(255,255,255,0.25)', minWidth: '2.2em' }}
+        // text-indent inherits into the inline-block number; reset it there.
+        lineNumberStyle={{ color: 'rgba(255,255,255,0.25)', minWidth: '2.2em', textIndent: 0 }}
         codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
       >
         {value}

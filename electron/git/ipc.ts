@@ -1,0 +1,155 @@
+// IPC surface for the Git Studio tab — Git Pilot's electron/main.ts handlers,
+// moved under a git: namespace. The preload exposes them as
+// window.imaginarium.git.*; the renderer's typed wrapper is src/lib/git/api.ts.
+
+import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import * as git from './gitService';
+import type { RecentRepo } from './types';
+
+const MAX_RECENT = 20;
+
+const windowOf = (e: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)!;
+
+function recentFile(): string {
+  return path.join(app.getPath('userData'), 'git-recent-repositories.json');
+}
+
+async function readRecent(): Promise<RecentRepo[]> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(recentFile(), 'utf8')) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is RecentRepo =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof (item as RecentRepo).path === 'string' &&
+          typeof (item as RecentRepo).name === 'string' &&
+          typeof (item as RecentRepo).lastOpened === 'string',
+      )
+      .slice(0, MAX_RECENT);
+  } catch {
+    return [];
+  }
+}
+
+async function writeRecent(repositories: RecentRepo[]): Promise<void> {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(recentFile(), JSON.stringify(repositories.slice(0, MAX_RECENT), null, 2), 'utf8');
+}
+
+async function rememberRepo(root: string): Promise<void> {
+  const normalized = root.toLowerCase();
+  const next = [
+    { path: root, name: path.basename(root), lastOpened: new Date().toISOString() },
+    ...(await readRecent()).filter((repo) => repo.path.toLowerCase() !== normalized),
+  ];
+  await writeRecent(next);
+}
+
+/** A visible PowerShell window in the repository, showing `git status`. */
+async function openPowerShell(root: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const startCommand = [
+      "Start-Process -FilePath 'powershell.exe'",
+      '-WorkingDirectory (Get-Location).Path',
+      '-WindowStyle Normal',
+      "-ArgumentList @('-NoExit', '-NoLogo', '-Command', 'git status')",
+    ].join(' ');
+    // The repository path is the cwd, never part of the command text.
+    const launcher = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', startCommand], {
+      cwd: root,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    launcher.once('error', reject);
+    launcher.once('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Windows could not open PowerShell (exit code ${code ?? 'unknown'}).`));
+    });
+  });
+}
+
+export function registerGitIpc(): void {
+  ipcMain.handle('git:gitVersion', async () => (await git.runGit(['--version'])).trim());
+
+  ipcMain.handle('git:openRepository', async (e) => {
+    const result = await dialog.showOpenDialog(windowOf(e), {
+      title: 'Choose a Git repository',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const state = await git.getRepoState(result.filePaths[0]);
+    await rememberRepo(state.root);
+    return state;
+  });
+
+  ipcMain.handle('git:chooseFolder', async (e) => {
+    const result = await dialog.showOpenDialog(windowOf(e), {
+      title: 'Choose a folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
+
+  ipcMain.handle('git:recent', readRecent);
+  ipcMain.handle('git:forget', async (_e, repoPath: string) => {
+    const target = String(repoPath ?? '').toLowerCase();
+    const repositories = (await readRecent()).filter((repo) => repo.path.toLowerCase() !== target);
+    await writeRecent(repositories);
+    return repositories;
+  });
+  ipcMain.handle('git:load', async (_e, repoPath: string) => {
+    const state = await git.getRepoState(repoPath);
+    await rememberRepo(state.root);
+    return state;
+  });
+  ipcMain.handle('git:clone', async (_e, input: { url: string; parent: string; name?: string }) => {
+    const state = await git.cloneRepository(input?.url, input?.parent, input?.name);
+    await rememberRepo(state.root);
+    return state;
+  });
+  ipcMain.handle('git:init', async (_e, folder: string) => {
+    const state = await git.initRepository(folder);
+    await rememberRepo(state.root);
+    return state;
+  });
+
+  ipcMain.handle('git:stage', (_e, repo: string, files: string[]) => git.stage(repo, files));
+  ipcMain.handle('git:unstage', (_e, repo: string, files: string[]) => git.unstage(repo, files));
+  ipcMain.handle('git:discard', (_e, repo: string, files: string[]) => git.discard(repo, files));
+  ipcMain.handle('git:commit', (_e, repo: string, message: string) => git.commit(repo, message));
+  ipcMain.handle('git:fetch', (_e, repo: string) => git.fetchRepo(repo));
+  ipcMain.handle('git:pull', (_e, repo: string) => git.pullRepo(repo));
+  ipcMain.handle('git:push', (_e, repo: string) => git.pushRepo(repo));
+  ipcMain.handle('git:switchBranch', (_e, repo: string, branch: string) => git.switchBranch(repo, branch));
+  ipcMain.handle('git:createBranch', (_e, repo: string, branch: string) => git.createBranch(repo, branch));
+  ipcMain.handle('git:mergeBranch', (_e, repo: string, source: string) => git.mergeBranch(repo, source));
+  ipcMain.handle('git:addRemote', (_e, repo: string, name: string, url: string) => git.addRemote(repo, name, url));
+  ipcMain.handle(
+    'git:saveIdentity',
+    (_e, repo: string, identity: { name: string; email: string }, global: boolean) =>
+      git.saveIdentity(repo, identity, Boolean(global)),
+  );
+  ipcMain.handle('git:authInfo', () => git.authInfo());
+  ipcMain.handle('git:signIn', (_e, repo: string) => git.signIn(repo));
+
+  ipcMain.handle('git:openExplorer', async (_e, repo: string) => {
+    const error = await shell.openPath(await git.resolveRepoRoot(repo));
+    if (error) throw new Error(error);
+  });
+  ipcMain.handle('git:openTerminal', async (_e, repo: string) => {
+    await openPowerShell(await git.resolveRepoRoot(repo));
+  });
+  ipcMain.handle('git:openCreateRemote', async (_e, repo: string) => {
+    const state = await git.getRepoState(repo);
+    const remote = state.remotes[0];
+    if (!remote) throw new Error('Add a GitHub remote first.');
+    const match = remote.fetchUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/i);
+    if (!match) throw new Error('Automatic repository creation links are currently available for GitHub remotes.');
+    await shell.openExternal(`https://github.com/new?name=${encodeURIComponent(match[2])}`);
+  });
+}

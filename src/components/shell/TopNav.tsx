@@ -4,6 +4,8 @@ const LINKS = [
   { to: '/chat', label: 'Chat' },
   { to: '/research', label: 'Research' },
   { to: '/pdf', label: 'PDF Tools' },
+  { to: '/svn', label: 'SVN Studio' },
+  { to: '/git', label: 'Git Studio' },
 ];
 
 export default function TopNav({

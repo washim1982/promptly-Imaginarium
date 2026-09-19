@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../../state/LlmContext';
 import { domainOf } from '../../lib/search';
 import Markdown from './Markdown';
+import AgentTimeline from './AgentTimeline';
 
 function time(ts: number): string {
   return new Date(ts).toLocaleTimeString([], {
@@ -40,7 +41,9 @@ export default function Message({ message }: { message: ChatMessage }) {
           <span>·</span>
           <span>{time(message.createdAt)}</span>
         </div>
-        {message.searching ? (
+        {message.agent ? (
+          <AgentTimeline view={message.agent} streaming={Boolean(message.streaming)} />
+        ) : message.searching ? (
           <span className="mono inline-flex items-center gap-2 text-[12px] text-[var(--color-teal)]">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--color-teal)]" />
             🔎 Searching the web…
@@ -50,7 +53,7 @@ export default function Message({ message }: { message: ChatMessage }) {
         ) : (
           <span className="text-white/40">…</span>
         )}
-        {message.streaming && !message.searching && (
+        {message.streaming && !message.searching && !message.agent && (
           <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-[var(--color-neon)] align-middle" />
         )}
 

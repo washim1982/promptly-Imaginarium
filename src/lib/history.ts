@@ -2,6 +2,8 @@
 // server — each browser keeps its own private history (matches the app's
 // privacy model). Plus JSON export/import for backup & portability.
 
+import type { AgentContextState, AgentView } from './agent/session';
+
 export interface StoredMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -9,6 +11,8 @@ export interface StoredMessage {
   createdAt: number;
   // Web sources an assistant used (present only for web-search-grounded replies).
   sources?: { title: string; url: string; content: string }[];
+  /** Agent replies: the steps and prose in order (see lib/agent/session.ts). */
+  agent?: Omit<AgentView, 'running' | 'usage'>;
 }
 
 export interface Conversation {
@@ -17,6 +21,8 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: StoredMessage[];
+  /** Earlier turns the agent compacted into summaries, carried across turns. */
+  agentContext?: AgentContextState;
 }
 
 export type ConversationMeta = Omit<Conversation, 'messages'>;

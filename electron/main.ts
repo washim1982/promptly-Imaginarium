@@ -25,6 +25,9 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/prom
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
+import { registerSvnIpc } from './svn/ipc';
+import { registerGitIpc } from './git/ipc';
+import { registerAgentIpc } from './agent/ipc';
 
 const SCHEME = 'app';
 const HOST = 'imaginarium';
@@ -515,6 +518,10 @@ async function downloadModel(
 // ---------------------------------------------------------------------------
 
 function registerIpc(): void {
+  registerSvnIpc();
+  registerGitIpc();
+  registerAgentIpc();
+
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(),
     platform: process.platform,

@@ -1,0 +1,1581 @@
+/*
+  SVN Studio, re-skinned for Imaginarium.
+
+  Layout and component structure follow SVN Studio's web client. The palette does
+  not: every colour resolves to an Imaginarium token, so the tab uses the same
+  glass panels, ink background and mono micro-labels as Chat / Research / PDF —
+  and follows the accent chosen in Settings (--color-neon), live.
+
+  Everything is scoped under .svn-studio and prefixed svn-, and the tokens are
+  --svn-* rather than SVN Studio's --color-* / --radius-*: several of those names
+  (--radius-sm/md/lg, --font-sans) are Tailwind v4 theme variables, and
+  redefining them would silently restyle any Tailwind utility inside the tab.
+*/
+
+.svn-studio {
+  /* Surfaces */
+  --svn-surface: var(--color-glass); /* panels — same glass as the rest of the app */
+  --svn-surface-2: rgba(255, 255, 255, 0.035); /* hover / nested */
+  --svn-elevated: #16141f; /* menus, modals, popovers */
+  --svn-editor: var(--color-ink);
+  --svn-input: rgba(0, 0, 0, 0.22);
+  --svn-border: var(--color-glass-border);
+  --svn-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* Text */
+  --svn-text: #ece9f1;
+  --svn-muted: var(--color-muted);
+  --svn-faint: rgba(236, 233, 241, 0.32);
+
+  /* Accent: the user's glow colour */
+  --svn-accent: var(--color-neon);
+  --svn-accent-soft: var(--color-neon-soft);
+  --svn-accent-tint: color-mix(in srgb, var(--color-neon) 14%, transparent);
+  --svn-glow:
+    0 0 18px color-mix(in srgb, var(--color-neon) 35%, transparent),
+    0 0 4px color-mix(in srgb, var(--color-neon) 50%, transparent);
+  /* AI actions get a violet-shifted accent so they read as distinct from SVN
+     actions, while still following the chosen theme colour. */
+  --svn-ai: color-mix(in srgb, var(--color-neon) 55%, #8b5cf6);
+  --svn-link: var(--color-teal);
+
+  /* Status semantics (kept meaningful, tuned for the dark ink background) */
+  --svn-added: var(--color-teal);
+  --svn-modified: #e3b341;
+  --svn-deleted: #f47067;
+  --svn-conflict: #f0883e;
+  --svn-success: #3fb950;
+  --svn-danger: #f85149;
+
+  --svn-radius-sm: 8px;
+  --svn-radius-md: 12px;
+  --svn-radius-lg: var(--radius-panel);
+  --svn-gap: 10px;
+  --svn-fast: 120ms ease;
+  --svn-med: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  --svn-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  font-size: 14px;
+  color: var(--svn-text);
+
+  & *,
+  & *::before,
+  & *::after {
+    box-sizing: border-box;
+  }
+
+  & button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  & button:disabled {
+    cursor: not-allowed;
+  }
+
+  /* Imaginarium's mono micro-label, used for every section header in the tab. */
+  & .svn-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--svn-muted);
+  }
+
+  /* ---- Buttons --------------------------------------------------------------- */
+
+  & .svn-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--svn-muted);
+    border-radius: var(--svn-radius-sm);
+    padding: 5px 10px;
+    font-size: 12px;
+    transition:
+      background var(--svn-fast),
+      color var(--svn-fast),
+      border-color var(--svn-fast);
+  }
+
+  & .svn-btn:hover:not(:disabled) {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+    border-color: var(--svn-border);
+  }
+
+  & .svn-btn:disabled {
+    opacity: 0.4;
+  }
+
+  & .svn-btn--active {
+    background: var(--svn-accent-tint);
+    border-color: color-mix(in srgb, var(--svn-accent) 45%, transparent);
+    color: var(--svn-text);
+  }
+
+  /* Matches the app's primary buttons: neon fill, black text, neon glow. */
+  & .svn-btn-primary {
+    background: var(--svn-accent);
+    color: #000;
+    border: none;
+    border-radius: var(--svn-radius-md);
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--svn-glow);
+    transition:
+      filter var(--svn-fast),
+      transform var(--svn-fast);
+  }
+
+  & .svn-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  & .svn-btn-primary:disabled {
+    opacity: 0.4;
+    box-shadow: none;
+  }
+
+  /* ---- In-tab toolbar (SVN Studio's title bar) --------------------------------- */
+
+  & .svn-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px 10px;
+  }
+
+  & .svn-toolbar__group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  & .svn-toolbar__icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--svn-radius-sm);
+    color: var(--svn-muted);
+    transition:
+      background var(--svn-fast),
+      color var(--svn-fast);
+  }
+
+  & .svn-toolbar__icon:hover:not(:disabled) {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+  }
+
+  & .svn-toolbar__icon:disabled {
+    opacity: 0.3;
+  }
+
+  & .svn-toolbar__icon--on {
+    color: var(--svn-accent);
+  }
+
+  & .svn-toolbar__search {
+    flex: 1;
+    max-width: 520px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 34px;
+    padding: 0 12px;
+    background: var(--svn-surface);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-md);
+    backdrop-filter: blur(14px);
+    color: var(--svn-faint);
+    font-size: 13px;
+    transition: border-color var(--svn-fast);
+  }
+
+  & .svn-toolbar__search:hover {
+    border-color: color-mix(in srgb, var(--svn-accent) 45%, transparent);
+    color: var(--svn-muted);
+  }
+
+  & .svn-toolbar__search span {
+    flex: 1;
+    text-align: left;
+  }
+
+  & .svn-kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--svn-muted);
+    border: 1px solid var(--svn-border-strong);
+    border-radius: 4px;
+    padding: 1px 6px;
+  }
+
+  & .svn-toolbar__error {
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--svn-danger);
+    background: color-mix(in srgb, var(--svn-danger) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--svn-danger) 30%, transparent);
+    border-radius: var(--svn-radius-sm);
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+
+  & .svn-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--svn-muted);
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: var(--svn-radius-sm);
+    border: 1px solid var(--svn-border);
+  }
+
+  & .svn-toggle--on {
+    color: var(--svn-text);
+    border-color: color-mix(in srgb, var(--svn-accent) 50%, transparent);
+    background: var(--svn-accent-tint);
+    box-shadow: var(--svn-glow);
+  }
+
+  & .svn-toggle input {
+    accent-color: var(--svn-accent);
+  }
+
+  /* ---- Workspace & panels ------------------------------------------------------ */
+
+  & .svn-workspace {
+    display: flex;
+    min-height: 0;
+    gap: var(--svn-gap);
+    padding: 0 16px 10px;
+  }
+
+  & .svn-panel {
+    flex-shrink: 0;
+    overflow-y: auto;
+    background: var(--svn-surface);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-lg);
+    backdrop-filter: blur(14px);
+    display: flex;
+    flex-direction: column;
+    animation: svn-fade-in var(--svn-med);
+  }
+
+  & .svn-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--svn-border);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: color-mix(in srgb, var(--color-ink) 70%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  & .svn-center {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--svn-editor);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-lg);
+    overflow: hidden;
+  }
+
+  & .svn-muted-note {
+    padding: 14px;
+    color: var(--svn-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ---- Activity bar ------------------------------------------------------------- */
+
+  & .svn-activity {
+    width: 56px;
+    flex-shrink: 0;
+    background: var(--svn-surface);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-lg);
+    backdrop-filter: blur(14px);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+  }
+
+  & .svn-activity__items {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  & .svn-activity__item {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--svn-radius-md);
+    color: var(--svn-muted);
+    transition:
+      background var(--svn-fast),
+      color var(--svn-fast);
+  }
+
+  & .svn-activity__item:hover {
+    color: var(--svn-text);
+    background: var(--svn-surface-2);
+  }
+
+  & .svn-activity__item--active {
+    color: var(--svn-accent);
+    background: var(--svn-accent-tint);
+  }
+
+  & .svn-activity__indicator {
+    position: absolute;
+    left: -8px;
+    top: 9px;
+    bottom: 9px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--svn-accent);
+    box-shadow: var(--svn-glow);
+  }
+
+  & .svn-activity__badge {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--svn-accent);
+    color: #000;
+    font-size: 9px;
+    font-weight: 700;
+    display: grid;
+    place-items: center;
+  }
+
+  /* ---- Explorer tree ----------------------------------------------------------------- */
+
+  & .svn-explorer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 6px;
+  }
+
+  & .svn-explorer-actions {
+    display: flex;
+    gap: 2px;
+  }
+
+  & .svn-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: transparent;
+    border: none;
+    color: var(--svn-muted);
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    transition:
+      background var(--svn-fast),
+      color var(--svn-fast);
+  }
+
+  & .svn-icon-btn:hover {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+  }
+
+  & .svn-explorer-project {
+    padding: 2px 12px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--svn-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .svn-tree-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 0 8px 8px;
+    border-bottom: 1px solid var(--svn-border);
+    margin-bottom: 4px;
+  }
+
+  & .svn-tree {
+    user-select: none;
+  }
+
+  & .svn-tree__row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    margin: 0 4px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background var(--svn-fast);
+  }
+
+  & .svn-tree__row:hover {
+    background: var(--svn-surface-2);
+  }
+
+  & .svn-tree__row:hover .svn-tree__row-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  & .svn-tree__row--selected,
+  & .svn-tree__row--selected:hover {
+    background: var(--svn-accent-tint);
+    box-shadow: inset 2px 0 0 var(--svn-accent);
+  }
+
+  & .svn-tree__row--dragover {
+    outline: 2px dashed var(--svn-accent);
+    outline-offset: -2px;
+  }
+
+  & .svn-tree__row-actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--svn-fast);
+    flex-shrink: 0;
+  }
+
+  & .svn-tree__row-action {
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-tree__row-action:hover {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+  }
+
+  & .svn-tree__row-action--danger:hover {
+    color: var(--svn-danger);
+  }
+
+  & .svn-tree__caret {
+    width: 12px;
+    color: var(--svn-muted);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+
+  & .svn-tree__icon {
+    width: 16px;
+    display: grid;
+    place-items: center;
+    color: var(--svn-muted);
+    flex-shrink: 0;
+  }
+
+  & .svn-tree__icon--dir {
+    color: var(--svn-link);
+  }
+
+  & .svn-tree__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    color: var(--svn-text);
+  }
+
+  & .svn-tree__name--added {
+    color: var(--svn-added);
+  }
+  & .svn-tree__name--modified {
+    color: var(--svn-modified);
+  }
+  & .svn-tree__name--deleted {
+    color: var(--svn-deleted);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--svn-deleted) 50%, transparent);
+  }
+  & .svn-tree__name--conflicted {
+    color: var(--svn-conflict);
+  }
+
+  & .svn-tree__lock {
+    color: var(--svn-modified);
+    display: grid;
+    place-items: center;
+  }
+
+  & .svn-tree__children {
+    margin-left: 14px;
+    border-left: 1px solid var(--svn-border);
+    padding-left: 4px;
+  }
+
+  & .svn-changes {
+    padding: 6px 4px;
+  }
+
+  & .svn-changes .svn-tree__row {
+    gap: 8px;
+    cursor: default;
+  }
+
+  & .svn-changes input[type='checkbox'] {
+    accent-color: var(--svn-accent);
+  }
+
+  /* ---- Status badges --------------------------------------------------------------- */
+
+  & .svn-badge {
+    display: inline-block;
+    min-width: 18px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 999px;
+    flex-shrink: 0;
+  }
+
+  & .svn-badge--modified,
+  & .svn-badge--replaced {
+    background: color-mix(in srgb, var(--svn-modified) 18%, transparent);
+    color: var(--svn-modified);
+  }
+  & .svn-badge--added,
+  & .svn-badge--unversioned {
+    background: color-mix(in srgb, var(--svn-added) 18%, transparent);
+    color: var(--svn-added);
+  }
+  & .svn-badge--deleted,
+  & .svn-badge--missing {
+    background: color-mix(in srgb, var(--svn-deleted) 18%, transparent);
+    color: var(--svn-deleted);
+  }
+  & .svn-badge--conflicted {
+    background: color-mix(in srgb, var(--svn-conflict) 24%, transparent);
+    color: var(--svn-conflict);
+  }
+
+  /* ---- Context menu ---------------------------------------------------------------- */
+
+  & .svn-menu {
+    position: fixed;
+    z-index: 1000;
+    min-width: 190px;
+    padding: 4px;
+    background: var(--svn-elevated);
+    border: 1px solid var(--svn-border-strong);
+    border-radius: var(--svn-radius-md);
+    box-shadow: var(--svn-shadow);
+    animation: svn-fade-in var(--svn-fast);
+  }
+
+  & .svn-menu__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--svn-text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+
+  & .svn-menu__item:hover {
+    background: var(--svn-accent-tint);
+    color: var(--svn-text);
+  }
+
+  & .svn-menu__item--danger {
+    color: var(--svn-danger);
+  }
+
+  & .svn-menu__separator {
+    height: 1px;
+    background: var(--svn-border);
+    margin: 4px 0;
+  }
+
+  /* ---- Editor ------------------------------------------------------------------------ */
+
+  & .svn-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--svn-border);
+    background: color-mix(in srgb, var(--color-ink) 85%, #1a1626);
+  }
+
+  & .svn-breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-breadcrumb__segment:last-child {
+    color: var(--svn-text);
+    font-weight: 600;
+  }
+
+  & .svn-breadcrumb__sep {
+    margin: 0 6px;
+    color: var(--svn-faint);
+  }
+
+  & .svn-segmented {
+    display: flex;
+    padding: 2px;
+    gap: 2px;
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-sm);
+  }
+
+  & .svn-segmented button {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--svn-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+  }
+
+  & .svn-segmented button:disabled {
+    opacity: 0.35;
+  }
+
+  & .svn-segmented .svn-segmented--on {
+    background: var(--svn-accent-tint);
+    color: var(--svn-text);
+  }
+
+  & .svn-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    padding: 0 40px;
+    gap: 14px;
+  }
+
+  & .svn-empty__icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    color: var(--svn-accent);
+    background: color-mix(in srgb, var(--svn-accent) 20%, transparent);
+    box-shadow: var(--svn-glow);
+  }
+
+  & .svn-empty__title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--svn-text);
+  }
+
+  & .svn-empty__subtitle {
+    font-size: 13px;
+    color: var(--svn-muted);
+    max-width: 380px;
+    line-height: 1.5;
+  }
+
+  /* ---- Commit panel / composer ----------------------------------------------------------- */
+
+  & .svn-panel__status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  & .svn-panel__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+  }
+
+  & .svn-panel__dot--clean {
+    background: var(--svn-success);
+    box-shadow: 0 0 8px var(--svn-success);
+  }
+
+  & .svn-panel__dot--dirty {
+    background: var(--svn-accent);
+    box-shadow: var(--svn-glow);
+  }
+
+  & .svn-composer {
+    border-top: 1px solid var(--svn-border);
+    padding: 10px 12px 12px;
+    background: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  }
+
+  & .svn-composer__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  & .svn-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--svn-surface-2);
+    border: 1px solid var(--svn-border);
+    color: var(--svn-text);
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    transition:
+      background var(--svn-fast),
+      border-color var(--svn-fast),
+      box-shadow var(--svn-fast);
+  }
+
+  & .svn-pill:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--svn-accent) 60%, transparent);
+    background: var(--svn-accent-tint);
+  }
+
+  & .svn-pill:disabled {
+    opacity: 0.4;
+  }
+
+  & .svn-pill--ai {
+    border-color: color-mix(in srgb, var(--svn-ai) 50%, transparent);
+    color: color-mix(in srgb, var(--svn-ai) 60%, white);
+  }
+
+  & .svn-pill--ai:hover:not(:disabled),
+  & .svn-pill--ai.svn-pill--active {
+    border-color: var(--svn-ai);
+    background: color-mix(in srgb, var(--svn-ai) 18%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--svn-ai) 35%, transparent);
+  }
+
+  & .svn-composer__input {
+    position: relative;
+    display: flex;
+  }
+
+  & .svn-textarea {
+    flex: 1;
+    resize: none;
+    background: var(--svn-input);
+    color: var(--svn-text);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-md);
+    padding: 10px 44px 10px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    transition: border-color var(--svn-fast);
+  }
+
+  & .svn-textarea::placeholder {
+    color: var(--svn-faint);
+  }
+
+  & .svn-textarea:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--svn-accent) 55%, transparent);
+  }
+
+  & .svn-send {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--svn-accent);
+    color: #000;
+    border: none;
+    display: grid;
+    place-items: center;
+    box-shadow: var(--svn-glow);
+    transition:
+      filter var(--svn-fast),
+      opacity var(--svn-fast);
+  }
+
+  & .svn-send:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  & .svn-send:disabled {
+    background: var(--svn-surface-2);
+    color: var(--svn-faint);
+    box-shadow: none;
+  }
+
+  & .svn-composer__hint {
+    margin-top: 6px;
+    text-align: center;
+  }
+
+  /* ---- AI assist box ------------------------------------------------------------------- */
+
+  & .svn-ai-box {
+    margin: 2px 0 10px;
+    background: var(--svn-input);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-md);
+    padding: 10px 10px 8px;
+    animation: svn-fade-in var(--svn-fast);
+    transition: border-color var(--svn-fast);
+  }
+
+  & .svn-ai-box:focus-within {
+    border-color: color-mix(in srgb, var(--svn-ai) 60%, transparent);
+  }
+
+  & .svn-ai-box__model-note {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--svn-muted);
+  }
+
+  & .svn-ai-box__model-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--svn-faint);
+  }
+
+  & .svn-ai-box__model-dot--ready {
+    background: var(--svn-ai);
+    box-shadow: 0 0 8px var(--svn-ai);
+  }
+
+  & .svn-ai-box__model-dot--missing {
+    background: var(--svn-danger);
+  }
+
+  & .svn-ai-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  & .svn-ai-hint {
+    font-size: 11px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-ai-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    padding: 2px 4px 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    background: var(--svn-surface-2);
+    border: 1px solid var(--svn-border);
+    color: var(--svn-text);
+  }
+
+  & .svn-ai-chip__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 170px;
+  }
+
+  & .svn-ai-chip__tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: color-mix(in srgb, var(--svn-ai) 60%, white);
+  }
+
+  & .svn-ai-chip__remove {
+    border: none;
+    background: transparent;
+    color: var(--svn-muted);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    line-height: 1;
+    padding: 0;
+  }
+
+  & .svn-ai-chip__remove:hover {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+  }
+
+  & .svn-ai-input {
+    width: 100%;
+    resize: none;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--svn-text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 4px 2px;
+  }
+
+  & .svn-ai-input::placeholder {
+    color: var(--svn-faint);
+  }
+
+  & .svn-ai-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+
+  & .svn-ai-left {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  & .svn-ai-plus {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--svn-muted);
+    display: grid;
+    place-items: center;
+  }
+
+  & .svn-ai-plus:hover {
+    background: var(--svn-surface-2);
+    color: var(--svn-text);
+  }
+
+  & .svn-ai-send {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: none;
+    background: var(--svn-ai);
+    color: white;
+    display: grid;
+    place-items: center;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--svn-ai) 45%, transparent);
+    transition: filter var(--svn-fast);
+  }
+
+  & .svn-ai-send:hover:not(:disabled) {
+    filter: brightness(1.12);
+  }
+
+  & .svn-ai-send:disabled {
+    background: var(--svn-surface-2);
+    color: var(--svn-faint);
+    box-shadow: none;
+  }
+
+  /* The box sits near the bottom of the panel, so menus open upward. */
+  & .svn-ai-pop {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    width: 270px;
+    padding: 4px;
+    background: var(--svn-elevated);
+    border: 1px solid var(--svn-border-strong);
+    border-radius: var(--svn-radius-md);
+    box-shadow: var(--svn-shadow);
+    animation: svn-fade-in var(--svn-fast);
+  }
+
+  & .svn-ai-pop__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--svn-text);
+    padding: 7px 9px;
+    border-radius: 6px;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  & .svn-ai-pop__item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--svn-ai) 20%, transparent);
+  }
+
+  & .svn-ai-pop__item:disabled {
+    color: var(--svn-faint);
+  }
+
+  & .svn-ai-pop__filter {
+    width: 100%;
+    background: var(--svn-input);
+    border: 1px solid var(--svn-border);
+    border-radius: 6px;
+    color: var(--svn-text);
+    padding: 6px 8px;
+    font-size: 12px;
+    margin-bottom: 4px;
+    outline: none;
+  }
+
+  & .svn-ai-pop__list {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  /* ---- History --------------------------------------------------------------------------- */
+
+  & .svn-history__entry {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--svn-border);
+  }
+
+  & .svn-history__meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--svn-muted);
+  }
+
+  & .svn-history__rev {
+    color: var(--svn-accent);
+  }
+
+  & .svn-history__author {
+    font-weight: 600;
+    margin: 4px 0;
+  }
+
+  & .svn-history__msg {
+    font-size: 13px;
+    white-space: pre-wrap;
+    color: color-mix(in srgb, var(--svn-text) 85%, transparent);
+  }
+
+  & .svn-history summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--svn-link);
+    margin-top: 6px;
+  }
+
+  & .svn-history__paths {
+    margin: 4px 0 0;
+    padding-left: 16px;
+  }
+
+  & .svn-history__paths li {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--svn-muted);
+  }
+
+  /* ---- Modals ------------------------------------------------------------------------------ */
+
+  & .svn-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 16px;
+  }
+
+  & .svn-modal {
+    width: 540px;
+    max-width: 100%;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    background: color-mix(in srgb, var(--svn-elevated) 92%, transparent);
+    border: 1px solid var(--svn-border-strong);
+    border-radius: var(--svn-radius-lg);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--svn-shadow);
+    padding: 24px;
+    animation: svn-fade-in var(--svn-fast);
+  }
+
+  & .svn-modal h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  & .svn-settings-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--svn-accent);
+    margin: 22px 0 12px;
+  }
+
+  & .svn-field {
+    margin-bottom: 12px;
+  }
+
+  & .svn-field > label {
+    display: block;
+    font-size: 12px;
+    color: var(--svn-muted);
+    margin-bottom: 5px;
+  }
+
+  & .svn-field__row {
+    display: flex;
+    gap: 6px;
+  }
+
+  & .svn-field input,
+  & .svn-field select {
+    width: 100%;
+    background: var(--svn-input);
+    color: var(--svn-text);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-sm);
+    padding: 8px 10px;
+    font-size: 13px;
+    transition: border-color var(--svn-fast);
+  }
+
+  & .svn-field input:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--svn-accent) 55%, transparent);
+  }
+
+  & .svn-field input::placeholder {
+    color: var(--svn-faint);
+  }
+
+  & .svn-field__hint {
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--svn-muted);
+    line-height: 1.45;
+  }
+
+  & .svn-note {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--svn-muted);
+    background: var(--svn-input);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-md);
+    padding: 10px 12px;
+  }
+
+  & .svn-status-line {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-status-line--error {
+    color: var(--svn-danger);
+  }
+
+  & .svn-status-line--ok {
+    color: var(--svn-success);
+  }
+
+  /* AI review result */
+  & .svn-review {
+    width: 780px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  & .svn-review__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  & .svn-review__badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    color: color-mix(in srgb, var(--svn-ai) 55%, white);
+    background: color-mix(in srgb, var(--svn-ai) 22%, transparent);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--svn-ai) 35%, transparent);
+  }
+
+  & .svn-review__meta {
+    font-size: 12px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-review__body {
+    background: var(--svn-input);
+    border: 1px solid var(--svn-border);
+    border-radius: var(--svn-radius-md);
+    padding: 14px 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    max-height: 60vh;
+    overflow-y: auto;
+    user-select: text;
+  }
+
+  & .svn-review__progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--svn-muted);
+  }
+
+  & .svn-review__error {
+    color: var(--svn-danger);
+    white-space: pre-wrap;
+  }
+
+  & .svn-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--svn-border-strong);
+    border-top-color: var(--svn-ai);
+    border-radius: 50%;
+    animation: svn-spin 0.8s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  & .svn-caret {
+    display: inline-block;
+    width: 7px;
+    height: 15px;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--svn-ai);
+    animation: svn-blink 1s steps(1) infinite;
+  }
+
+  /* ---- Command palette ---------------------------------------------------------------------- */
+
+  & .svn-palette-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(3px);
+    z-index: 3000;
+    display: flex;
+    justify-content: center;
+    padding-top: 110px;
+  }
+
+  & .svn-palette {
+    width: 580px;
+    max-width: calc(100vw - 40px);
+    max-height: 60vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--svn-elevated) 94%, transparent);
+    border: 1px solid color-mix(in srgb, var(--svn-accent) 35%, var(--svn-border-strong));
+    border-radius: var(--svn-radius-lg);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--svn-shadow), var(--svn-glow);
+    animation: svn-fade-in var(--svn-fast);
+  }
+
+  & .svn-palette__input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--svn-border);
+    color: var(--svn-muted);
+  }
+
+  & .svn-palette__input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--svn-text);
+    font-size: 14px;
+  }
+
+  & .svn-palette__results {
+    overflow-y: auto;
+    padding: 6px;
+  }
+
+  & .svn-palette__empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--svn-muted);
+    font-size: 13px;
+  }
+
+  & .svn-palette__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--svn-text);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+
+  & .svn-palette__item--active {
+    background: var(--svn-accent-tint);
+    box-shadow: inset 2px 0 0 var(--svn-accent);
+  }
+
+  & .svn-palette__item-icon {
+    width: 16px;
+    display: grid;
+    place-items: center;
+    color: var(--svn-muted);
+  }
+
+  & .svn-palette__item-hint {
+    color: var(--svn-muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---- Status bar -------------------------------------------------------------------------- */
+
+  /* SVN Studio used a solid accent bar; here it's the app's quiet mono footer
+     style, with the accent reserved for the live dots. */
+  & .svn-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 28px;
+    padding: 0 20px 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--svn-faint);
+  }
+
+  & .svn-statusbar__side {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  & .svn-statusbar__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+
+  & .svn-statusbar__item--danger {
+    color: var(--svn-danger);
+  }
+
+  & .svn-statusbar__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--svn-faint);
+  }
+
+  & .svn-statusbar__dot--live {
+    background: var(--svn-accent);
+    box-shadow: var(--svn-glow);
+  }
+
+  & .svn-statusbar__dot--busy {
+    background: var(--svn-modified);
+    animation: svn-pulse 1.2s ease-in-out infinite;
+  }
+
+  /* ---- Resize handle ------------------------------------------------------------------------ */
+
+  /* Sits exactly over the flex gap (negative margins cancel it on both sides),
+     so the visual spacing is unchanged. */
+  & .svn-resize {
+    flex-shrink: 0;
+    width: var(--svn-gap);
+    margin: 0 calc(-1 * var(--svn-gap));
+    cursor: col-resize;
+    position: relative;
+    z-index: 5;
+    outline: none;
+  }
+
+  & .svn-resize::after {
+    content: '';
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    left: 50%;
+    width: 2px;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: transparent;
+    transition:
+      background var(--svn-fast),
+      box-shadow var(--svn-fast);
+  }
+
+  & .svn-resize:hover::after,
+  & .svn-resize:focus-visible::after,
+  & .svn-resize--active::after {
+    background: var(--svn-accent);
+    box-shadow: var(--svn-glow);
+  }
+}
+
+/* Outside the scope: the drag state lives on <body> so the cursor stays right
+   even when the pointer leaves the handle. */
+body.svn-is-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.svn-is-resizing .monaco-editor {
+  pointer-events: none;
+}
+
+@keyframes svn-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes svn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes svn-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes svn-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .svn-studio *,
+  .svn-studio *::before,
+  .svn-studio *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

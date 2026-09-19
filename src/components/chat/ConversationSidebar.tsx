@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { useLlm } from '../../state/LlmContext';
+import { usePrompt } from '../PromptDialog';
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -28,6 +29,7 @@ export default function ConversationSidebar({
     exportHistory,
     importHistory,
   } = useLlm();
+  const ask = usePrompt();
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -73,8 +75,12 @@ export default function ConversationSidebar({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    const t = window.prompt('Rename conversation', c.title);
-                    if (t != null) renameConversation(c.id, t);
+                    // window.prompt() throws in Electron; use the in-app dialog.
+                    void ask({ title: 'Rename conversation', defaultValue: c.title, confirmLabel: 'Rename' }).then(
+                      (t) => {
+                        if (t != null) void renameConversation(c.id, t);
+                      },
+                    );
                   }}
                   title="Rename"
                   className="shrink-0 text-white/30 opacity-0 transition hover:text-white group-hover:opacity-100"

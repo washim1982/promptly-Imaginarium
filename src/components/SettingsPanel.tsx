@@ -3,6 +3,7 @@ import { useLlm } from '../state/LlmContext';
 import { CHAT_WIDTHS } from '../lib/ui';
 import { THEMES, isValidHex, resolveAccent } from '../lib/themes';
 import { desktop, formatBytes, shortenPath } from '../lib/desktop';
+import { usePrompt } from './PromptDialog';
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const {
@@ -22,6 +23,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     setCustomGlow,
   } = useLlm();
 
+  const ask = usePrompt();
   const [temp, setTemp] = useState(settings.temperature);
   const [topK, setTopK] = useState(settings.topK);
   const [topP, setTopP] = useState(settings.topP);
@@ -110,8 +112,12 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                         <button
                           onClick={(e) => {
                             e.preventDefault();
-                            const next = window.prompt('Rename model', m.label);
-                            if (next != null) void renameModel(m.id, next);
+                            // window.prompt() throws in Electron; use the in-app dialog.
+                            void ask({ title: 'Rename model', defaultValue: m.label, confirmLabel: 'Rename' }).then(
+                              (next) => {
+                                if (next != null) void renameModel(m.id, next);
+                              },
+                            );
                           }}
                           className="underline hover:text-white"
                         >

@@ -37,7 +37,22 @@ import {
 } from '../lib/models';
 import type { ChatWidth } from '../lib/ui';
 import { DEFAULT_THEME_ID, resolveAccent } from '../lib/themes';
-import { webSearch, formatSearchForChat, type SearchResult } from '../lib/search';
+import type { SearchResult } from '../lib/search';
+import { runAgentLoop } from '../lib/agent/loop';
+import { inputTokenBudget } from '../lib/agent/context';
+import { buildAgentSystemPrompt } from '../lib/agent/prompt';
+import { createToolRuntime, TOOL_SPECS, type TaintState } from '../lib/agent/tools';
+import {
+  applyAgentEvent,
+  buildTurnMessages,
+  emptyAgentView,
+  nextContextState,
+  persistableView,
+  type AgentContextState,
+  type AgentView,
+} from '../lib/agent/session';
+import type { LlmFn } from '../lib/agent/types';
+import { desktop } from '../lib/desktop';
 import { cleanError, isCancellation } from '../lib/desktop';
 import { stripControlTokens } from '../lib/controlTokens';
 
@@ -61,6 +76,13 @@ export interface ChatMessage {
   // sources the answer was grounded in (shown under the message).
   searching?: boolean;
   sources?: SearchResult[];
+  /** Agent-mode replies: tool steps and prose, in order. */
+  agent?: AgentView;
+}
+
+export interface Workspace {
+  path: string;
+  name: string;
 }
 
 export type ModelSource =
@@ -89,7 +111,10 @@ interface LlmState {
   customGlow: string | null;
   messages: ChatMessage[];
   isGenerating: boolean;
-  webSearchEnabled: boolean;
+  /** Agent mode: the model can call tools in a multi-round loop. */
+  agentEnabled: boolean;
+  /** Folder the agent's file tools are confined to. */
+  workspace: Workspace | null;
   // history
   conversations: ConversationMeta[];
   activeConversationId: string | null;
@@ -98,8 +123,13 @@ interface LlmState {
   setTheme: (id: string) => void;
   setCustomGlow: (hex: string | null) => void;
   setActiveModel: (id: string) => void;
-  setWebSearchEnabled: (on: boolean) => void;
-  loadModel: (source: ModelSource) => Promise<void>;
+  setAgentEnabled: (on: boolean) => void;
+  pickWorkspace: () => Promise<void>;
+  clearWorkspace: () => Promise<void>;
+  /** Answer an agent step waiting for approval. */
+  resolveApproval: (stepId: string, approved: boolean) => void;
+  /** Resolves true once the model is ready, false if it failed or was cancelled. */
+  loadModel: (source: ModelSource) => Promise<boolean>;
   /** Open the native picker and add the chosen .litertlm files to the library. */
   addModels: () => Promise<AddResult>;
   /** Remove from the library. Downloaded copies are deleted; user files are not. */
@@ -137,11 +167,11 @@ const MODEL_KEY = 'imaginarium.activeModel';
 const CHAT_WIDTH_KEY = 'imaginarium.chatWidth';
 const THEME_KEY = 'imaginarium.theme';
 const GLOW_KEY = 'imaginarium.customGlow';
-const WEB_SEARCH_KEY = 'imaginarium.webSearch';
+const AGENT_KEY = 'imaginarium.agent';
+// Replaced by the agent's web_search tool; cleared so a saved "on" can't linger.
+localStorage.removeItem('imaginarium.webSearch');
 
-// Sources fed to the model per chat answer — kept small so the conversation
-// context stays lean across turns.
-const CHAT_SEARCH_MAX_SOURCES = 6;
+const READ_TOOLS = new Set(TOOL_SPECS.filter((t) => t.readsPrivateData).map((t) => t.name));
 
 function loadSettings(): EngineConfig {
   try {
@@ -189,16 +219,23 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [webSearchEnabled, setWebSearchEnabledState] = useState<boolean>(
-    localStorage.getItem(WEB_SEARCH_KEY) === '1',
+  const [agentEnabled, setAgentEnabledState] = useState<boolean>(
+    localStorage.getItem(AGENT_KEY) === '1',
   );
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [conversations, setConversations] = useState<ConversationMeta[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     null,
   );
 
   const engineRef = useRef<LlmEngine | null>(null);
-  const searchAbortRef = useRef<AbortController | null>(null);
+  // Agent turn in flight: its abort handle, and approvals the user hasn't answered.
+  const agentAbortRef = useRef<AbortController | null>(null);
+  const approvalsRef = useRef(new Map<string, (approved: boolean) => void>());
+  // Per-conversation agent state: compacted earlier turns, and whether workspace
+  // files have been read into it (the taint gate for network tools).
+  const agentContextRef = useRef<AgentContextState | undefined>(undefined);
+  const taintRef = useRef<TaintState>({ privateDataRead: false });
   const messagesRef = useRef<ChatMessage[]>([]);
   const activeIdRef = useRef<string | null>(null);
 
@@ -248,8 +285,14 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(CHAT_WIDTH_KEY, chatWidth);
   }, [chatWidth]);
   useEffect(() => {
-    localStorage.setItem(WEB_SEARCH_KEY, webSearchEnabled ? '1' : '0');
-  }, [webSearchEnabled]);
+    localStorage.setItem(AGENT_KEY, agentEnabled ? '1' : '0');
+  }, [agentEnabled]);
+
+  // The workspace lives in the main process; read it once on startup.
+  useEffect(() => {
+    const bridge = (desktop as unknown as { agent?: { getWorkspace(): Promise<Workspace | null> } })?.agent;
+    void bridge?.getWorkspace().then(setWorkspace).catch(() => setWorkspace(null));
+  }, []);
 
   // Apply the visual theme: override --color-neon (and derive the soft variant)
   // on :root so glows, accents, and the ambient gradient all follow.
@@ -339,8 +382,27 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     [models, activeModelId],
   );
 
-  const setWebSearchEnabled = useCallback((on: boolean) => {
-    setWebSearchEnabledState(on);
+  const setAgentEnabled = useCallback((on: boolean) => {
+    setAgentEnabledState(on);
+  }, []);
+
+  const agentBridge = () =>
+    (desktop as unknown as {
+      agent: { pickWorkspace(): Promise<Workspace | null>; clearWorkspace(): Promise<null> };
+    }).agent;
+
+  const pickWorkspace = useCallback(async () => {
+    setWorkspace(await agentBridge().pickWorkspace());
+  }, []);
+
+  const clearWorkspace = useCallback(async () => {
+    setWorkspace(await agentBridge().clearWorkspace());
+  }, []);
+
+  const resolveApproval = useCallback((stepId: string, approved: boolean) => {
+    const resolve = approvalsRef.current.get(stepId);
+    approvalsRef.current.delete(stepId);
+    resolve?.(approved);
   }, []);
 
   const setChatWidth = useCallback((w: ChatWidth) => {
@@ -357,7 +419,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadModel = useCallback(
-    async (source: ModelSource) => {
+    async (source: ModelSource): Promise<boolean> => {
       setError(null);
       try {
         // 1. Settle on a library entry to load.
@@ -369,7 +431,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             // Nothing usable was chosen. If everything was rejected the UI shows
             // why; if the dialog was cancelled, just stay put.
             await refreshModels();
-            return;
+            return false;
           }
           entry = result.added[0];
         } else if (source.type === 'download') {
@@ -401,21 +463,27 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         const stream = await openModelStream(entry.id, setProgress);
 
         setStatus('initializing');
-        await engineRef.current?.dispose();
+        // Clear the ref as soon as the old engine is gone, so nothing can reach a
+        // disposed engine through it while the new one initializes.
+        const previous = engineRef.current;
+        engineRef.current = null;
+        await previous?.dispose();
         const engine = new LlmEngine(entry.label, settings);
         await engine.init(stream);
         engineRef.current = engine;
         setProgress(null);
         setStatus('ready');
+        return true;
       } catch (err) {
         if (isCancellation(err)) {
           setStatus('idle');
           setProgress(null);
-          return;
+          return false;
         }
         setError(cleanError(err));
         setProgress(null);
         setStatus('error');
+        return false;
       }
     },
     [activeModelId, settings, refreshModels],
@@ -448,13 +516,15 @@ export function LlmProvider({ children }: { children: ReactNode }) {
           title: deriveTitle(msgs),
           createdAt: msgs[0]?.createdAt ?? now,
           updatedAt: now,
-          messages: msgs.map(({ id: mid, role, text, createdAt, sources }) => ({
+          messages: msgs.map(({ id: mid, role, text, createdAt, sources, agent }) => ({
             id: mid,
             role,
             text,
             createdAt,
             ...(sources?.length ? { sources } : {}),
+            ...(agent ? { agent: persistableView(agent) } : {}),
           })),
+          ...(agentContextRef.current ? { agentContext: agentContextRef.current } : {}),
         });
         await refreshConversations();
       } catch {
@@ -478,6 +548,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       }
 
       const prompt = text.trim();
+      const prior = messagesRef.current;
+      const agentTurn = agentEnabled;
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -485,6 +557,9 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         createdAt: Date.now(),
       };
       const assistantId = crypto.randomUUID();
+      const update = (fn: (m: ChatMessage) => ChatMessage) =>
+        setMessages((ms) => ms.map((m) => (m.id === assistantId ? fn(m) : m)));
+
       setMessages((m) => [
         ...m,
         userMsg,
@@ -494,112 +569,153 @@ export function LlmProvider({ children }: { children: ReactNode }) {
           text: '',
           createdAt: Date.now(),
           streaming: true,
-          searching: webSearchEnabled,
+          ...(agentTurn ? { agent: emptyAgentView() } : {}),
         },
       ]);
       setIsGenerating(true);
 
-      // When web search is on, fetch sources first and ground the reply in them.
-      // The user message stays the clean question; only the engine sees the
-      // augmented prompt, and the sources are attached to the assistant message.
-      let enginePrompt = prompt;
-      if (webSearchEnabled) {
-        try {
-          searchAbortRef.current = new AbortController();
-          const results = (
-            await webSearch(prompt, searchAbortRef.current.signal)
-          ).slice(0, CHAT_SEARCH_MAX_SOURCES);
-          if (results.length) {
-            enginePrompt = formatSearchForChat(results, prompt);
-          }
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === assistantId
-                ? { ...msg, searching: false, sources: results }
-                : msg,
-            ),
-          );
-        } catch (err) {
-          // Search failure shouldn't block the answer — fall back to local-only.
-          const aborted = (err as Error).name === 'AbortError';
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === assistantId
-                ? {
-                    ...msg,
-                    searching: false,
-                    text: aborted
-                      ? msg.text
-                      : `_[web search unavailable: ${(err as Error).message} — answering from local knowledge]_\n\n`,
-                  }
-                : msg,
-            ),
-          );
-        } finally {
-          searchAbortRef.current = null;
-        }
-      }
-
       try {
-        for await (const token of engine.send(enginePrompt)) {
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === assistantId
-                ? { ...msg, text: msg.text + token }
-                : msg,
-            ),
+        if (agentTurn) {
+          const ctrl = new AbortController();
+          agentAbortRef.current = ctrl;
+          const systemPrompt = buildAgentSystemPrompt({
+            persona: settings.systemPrompt,
+            workspace,
+            now: new Date(),
+          });
+          const { messages: turn, historyIndex } = buildTurnMessages(
+            systemPrompt,
+            prior.map(({ role, text: t }) => ({ role, text: t })),
+            prompt,
+            agentContextRef.current,
           );
+          // The loop owns the context: every round becomes a fresh conversation
+          // built from its managed message list (see LlmEngine.generateFrom).
+          const llm: LlmFn = (msgs, signal) =>
+            (async function* () {
+              const eng = engineRef.current;
+              if (!eng) throw new Error('Model is not loaded.');
+              for await (const token of eng.generateFrom(msgs.map(({ role, content }) => ({ role, content })))) {
+                if (signal.aborted) return;
+                yield token;
+              }
+            })();
+
+          const result = await runAgentLoop({
+            messages: turn,
+            llm,
+            tools: createToolRuntime(taintRef.current),
+            budget: inputTokenBudget(settings.maxNumTokens, settings.maxOutputTokens),
+            signal: ctrl.signal,
+            onEvent: (event) =>
+              update((m) => ({ ...m, agent: applyAgentEvent(m.agent ?? emptyAgentView(), event) })),
+            requestApproval: (step) =>
+              new Promise<boolean>((resolve) => {
+                if (ctrl.signal.aborted) resolve(false);
+                else approvalsRef.current.set(step.id, resolve);
+              }),
+          });
+          agentContextRef.current = nextContextState(agentContextRef.current, result.compaction, historyIndex);
+          update((m) => ({
+            ...m,
+            text: result.text,
+            agent: {
+              ...(m.agent ?? emptyAgentView()),
+              running: false,
+              exhausted: result.exhausted,
+              stopped: result.stopped,
+            },
+          }));
+        } else {
+          for await (const token of engine.send(prompt)) {
+            update((m) => ({ ...m, text: m.text + token }));
+          }
         }
       } catch (err) {
-        setMessages((m) =>
-          m.map((msg) =>
-            msg.id === assistantId
-              ? {
-                  ...msg,
-                  text:
-                    msg.text + `\n\n_[generation error: ${(err as Error).message}]_`,
-                }
-              : msg,
-          ),
-        );
+        update((m) => ({
+          ...m,
+          text: m.text + `\n\n_[generation error: ${cleanError(err)}]_`,
+          // Agent replies render from their timeline, not `text` — so the error
+          // must go into the timeline too, or it is swallowed silently.
+          agent: m.agent
+            ? {
+                ...applyAgentEvent(m.agent, { type: 'notice', kind: 'error', message: `Error: ${cleanError(err)}` }),
+                running: false,
+              }
+            : m.agent,
+        }));
+        console.error('[chat] turn failed:', err);
       } finally {
+        agentAbortRef.current = null;
+        approvalsRef.current.clear();
         setIsGenerating(false);
         // Mark streaming done and persist the final transcript.
         setMessages((m) => {
           const final = m.map((msg) =>
-            msg.id === assistantId ? { ...msg, streaming: false } : msg,
+            msg.id === assistantId
+              ? { ...msg, streaming: false, agent: msg.agent ? { ...msg.agent, running: false } : msg.agent }
+              : msg,
           );
           void persist(convId!, final);
+          // Agent turns bypass the chat conversation; reseed it so plain chat
+          // afterwards still sees them.
+          if (agentTurn) void engineRef.current?.openConversation(messagesToTurns(final)).catch(() => {});
           return final;
         });
       }
     },
-    [status, isGenerating, persist, webSearchEnabled],
+    [status, isGenerating, persist, agentEnabled, workspace, settings],
   );
 
+  // Tool generations in flight (PDF, Research, SVN review). They share the one
+  // engine with chat, so while any runs the chat composer must stay disabled.
+  const toolRunsRef = useRef(0);
+
+  /**
+   * Checks the engine ref, not `status` state: a caller that awaits loadModel()
+   * and then generates in the same async function holds a closure from before
+   * the load, where `status` was not yet 'ready'. The ref is always current.
+   */
   const generate = useCallback(
     (prompt: string, systemPrompt?: string): AsyncGenerator<string> => {
       const engine = engineRef.current;
-      if (!engine || status !== 'ready') {
-        throw new Error('Model is not loaded.');
-      }
-      return engine.generate(prompt, systemPrompt);
+      if (!engine) throw new Error('Model is not loaded.');
+      const inner = engine.generate(prompt, systemPrompt);
+      return (async function* tracked() {
+        toolRunsRef.current += 1;
+        setIsGenerating(true);
+        try {
+          yield* inner;
+        } finally {
+          toolRunsRef.current -= 1;
+          if (toolRunsRef.current === 0) setIsGenerating(false);
+        }
+      })();
     },
-    [status],
+    [],
   );
 
   const cancel = useCallback(() => {
     // Downloads run in the main process, so cancelling one is an IPC call.
     void cancelDownload().catch(() => {});
-    searchAbortRef.current?.abort();
+    agentAbortRef.current?.abort();
+    // Unanswered approvals resolve as declined so the loop can unwind.
+    for (const resolve of approvalsRef.current.values()) resolve(false);
+    approvalsRef.current.clear();
     engineRef.current?.cancel();
     setIsGenerating(false);
   }, []);
+
+  const resetAgentState = () => {
+    agentContextRef.current = undefined;
+    taintRef.current = { privateDataRead: false };
+  };
 
   const newChat = useCallback(() => {
     setMessages([]);
     setActiveConversationId(null);
     activeIdRef.current = null;
+    resetAgentState();
     void engineRef.current?.openConversation([]); // fresh model context
   }, []);
 
@@ -611,7 +727,16 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     const msgs: ChatMessage[] = conv.messages.map((m) => ({
       ...m,
       text: stripControlTokens(m.text),
+      agent: m.agent ? { ...m.agent, running: false } : undefined,
     }));
+    // Restore the agent's compacted history, and re-arm the taint gate if this
+    // conversation already read workspace files.
+    agentContextRef.current = conv.agentContext;
+    taintRef.current = {
+      privateDataRead: msgs.some((m) =>
+        Object.values(m.agent?.steps ?? {}).some((s) => READ_TOOLS.has(s.tool) && s.status === 'done'),
+      ),
+    };
     setMessages(msgs);
     setActiveConversationId(id);
     activeIdRef.current = id;
@@ -627,6 +752,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         setMessages([]);
         setActiveConversationId(null);
         activeIdRef.current = null;
+        resetAgentState();
         void engineRef.current?.openConversation([]);
       }
     },
@@ -669,14 +795,18 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       customGlow,
       messages,
       isGenerating,
-      webSearchEnabled,
+      agentEnabled,
+      workspace,
       conversations,
       activeConversationId,
       setChatWidth,
       setTheme,
       setCustomGlow,
       setActiveModel,
-      setWebSearchEnabled,
+      setAgentEnabled,
+      pickWorkspace,
+      clearWorkspace,
+      resolveApproval,
       loadModel,
       addModels,
       removeModel,
@@ -708,14 +838,18 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       customGlow,
       messages,
       isGenerating,
-      webSearchEnabled,
+      agentEnabled,
+      workspace,
       conversations,
       activeConversationId,
       setChatWidth,
       setTheme,
       setCustomGlow,
       setActiveModel,
-      setWebSearchEnabled,
+      setAgentEnabled,
+      pickWorkspace,
+      clearWorkspace,
+      resolveApproval,
       loadModel,
       addModels,
       removeModel,
