@@ -200,6 +200,24 @@ Tick what to remove, then confirm. Removal:
 - then offers **Force-push**, which uses `--force-with-lease`, so it is refused
   if someone else pushed since your last fetch.
 
+**Deep scan with AI** (optional, in the same dialog) is a second pass for what
+the patterns can't know. A cheap filter in the main process picks lines holding
+a long random-looking value, or any value assigned to a secret-sounding name
+(camelCase and SCREAMING_SNAKE included), skipping hashes, UUIDs, version
+numbers and plain URLs. Those lines go to **gemma-4-E4B-it-web** running in the
+app — loaded if another model is active, as the SVN review does — whichsays
+for each one whether it is a real credential.
+
+- It only ever **adds** suspects; it never unticks or overrules the rules.
+- Its findings arrive **unticked**, grouped under "Flagged by the model — check
+  each one", with the kind it guessed.
+- Nothing leaves the machine, but the candidate lines *are* shown to the local
+  model, which the panel states plainly.
+- A small model is fallible in both directions: in testing it caught a
+  random-looking key with a neutral name that the rules missed, and it passed
+  over a wordy passphrase (`thunder-marmalade-91-vault`). Treat it as a second
+  opinion, not a guarantee.
+
 Limits worth knowing:
 - Files over 5 MB and binary files aren't scanned; the count of skipped files
   is shown so this is never silent.

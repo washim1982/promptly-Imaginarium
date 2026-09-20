@@ -251,6 +251,83 @@ export function SecretScanModal({
               </>
             )}
 
+            {phase === 'results' && (
+              <div className="gs-deep">
+                <div className="gs-deep-head">
+                  <div>
+                    <strong>
+                      <Sparkles size={14} /> Deep scan with AI
+                    </strong>
+                    <small>
+                      The pattern scan above only knows known formats. This asks the local model about lines that look
+                      like they could hold a credential — odd formats, unusual names. It runs on this PC and adds
+                      suspects for you to confirm; it never unticks anything above.
+                    </small>
+                  </div>
+                  <button
+                    className="gs-button secondary"
+                    disabled={deep.phase === 'collecting' || deep.phase === 'loading-model' || deep.phase === 'asking'}
+                    onClick={() => void runDeepScan()}
+                  >
+                    {deep.phase === 'done' || deep.phase === 'error' ? 'Run again' : 'Run deep scan'}
+                  </button>
+                </div>
+
+                {deep.phase === 'collecting' && (
+                  <p className="gs-scan-note">
+                    <Loader2 className="gs-spin" size={13} /> Collecting lines to check…
+                  </p>
+                )}
+                {deep.phase === 'loading-model' && (
+                  <p className="gs-scan-note">
+                    <Loader2 className="gs-spin" size={13} /> Loading {deep.model}…
+                  </p>
+                )}
+                {deep.phase === 'asking' && (
+                  <p className="gs-scan-note">
+                    <Loader2 className="gs-spin" size={13} /> Asking {llm.activeModel?.label ?? REVIEW_MODEL_LABEL}: batch{' '}
+                    {deep.done + 1} of {deep.total}…
+                  </p>
+                )}
+                {deep.phase === 'error' && (
+                  <div className="gs-info-callout danger">
+                    <AlertTriangle size={17} />
+                    <span>{deep.message}</span>
+                  </div>
+                )}
+                {deep.phase === 'done' && (
+                  <p className="gs-scan-note">
+                    {deep.asked === 0
+                      ? 'Nothing suspicious left for the model to check.'
+                      : `Checked ${deep.asked} value${deep.asked === 1 ? '' : 's'} from ${deep.considered} line${deep.considered === 1 ? '' : 's'} · ${aiFindings.length} flagged.`}
+                  </p>
+                )}
+
+                {aiFindings.length > 0 && (
+                  <div className="gs-scan-list">
+                    <section>
+                      <h3>
+                        Flagged by the model — check each one <span>{aiFindings.length}</span>
+                      </h3>
+                      {aiFindings.map((f) => (
+                        <label className="gs-finding" key={f.id}>
+                          <input type="checkbox" checked={selected.has(f.id)} onChange={() => toggle(f.id)} />
+                          <code>{f.masked}</code>
+                          <span className="gs-finding-path" title={`${f.path}:${f.line}`}>
+                            {f.path}:{f.line}
+                            {f.kind && <em className="gs-ai-kind"> · {f.kind}</em>}
+                          </span>
+                          <span className={`gs-where ${f.where}`}>
+                            {f.where === 'worktree' ? 'working tree' : `history${f.commit ? ` · ${f.commit}` : ''}`}
+                          </span>
+                        </label>
+                      ))}
+                    </section>
+                  </div>
+                )}
+              </div>
+            )}
+
             {phase === 'confirm' && (
               <div className="gs-scan-confirm">
                 <div className="gs-info-callout danger">
@@ -345,7 +422,7 @@ export function SecretScanModal({
       </div>
 
       <div className="gs-modal-footer">
-        {phase === 'results' && findings.length > 0 && (
+        {phase === 'results' && (findings.length > 0 || aiFindings.length > 0) && (
           <>
             <button className="gs-button secondary" onClick={() => void runScan()}>
               Re-scan
@@ -378,7 +455,7 @@ export function SecretScanModal({
             </button>
           </>
         )}
-        {(phase === 'done' || (phase === 'results' && findings.length === 0)) && (
+        {(phase === 'done' || (phase === 'results' && findings.length === 0 && aiFindings.length === 0)) && (
           <>
             <span className="flex-1" />
             <button className="gs-button primary" onClick={onClose}>

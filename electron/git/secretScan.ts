@@ -73,8 +73,9 @@ export const SECRET_RULES: SecretRule[] = [
   {
     id: 'assigned-secret',
     label: 'Password / secret / API key in code',
+    // `[A-Za-z_]*` so camelCase names match too: dbPassword, myApiKey, authToken.
     pattern:
-      /\b(?:password|passwd|pwd|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{8,})["']/gi,
+      /\b[A-Za-z_]*(?:password|passwd|pwd|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{8,})["']/gi,
   },
   {
     id: 'env-assignment',
@@ -188,6 +189,14 @@ export function scanText(
 
 const SECRET_WORDS =
   /\b(?:pass(?:word|wd|phrase)?|pwd|secret|token|api[_-]?key|apikey|auth|credential|private[_-]?key|access[_-]?key|session|cookie|signature|salt|cert)\b/i;
+
+/**
+ * "dbPassword" → "db Password", "SESSION_SECRET" → "SESSION SECRET". Both
+ * camel humps and underscores hide the word from \b, and identifiers are
+ * written both ways.
+ */
+const splitIdentifiers = (text: string) => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_+/g, ' ');
+const hasSecretWord = (line: string) => SECRET_WORDS.test(splitIdentifiers(line));
 /** Values that are obviously not credentials even though they look random. */
 const NOT_SECRET = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$|^\d+(?:\.\d+)*$|^#[0-9a-fA-F]{3,8}$|^(?:https?|file):\/\/[^\s"']*$/;
 const MAX_CANDIDATES = 200;
@@ -220,7 +229,7 @@ const VALUE_RE = /["'`]([^"'`\s]{10,200})["'`]|[:=]\s*([A-Za-z0-9_\-./+=]{16,200
 
 /** Suspicious values on one line, ignoring anything the rules already found. */
 export function candidateValues(line: string, known: Set<string>): string[] {
-  const keyed = SECRET_WORDS.test(line);
+  const keyed = hasSecretWord(line);
   const out: string[] = [];
   VALUE_RE.lastIndex = 0;
   for (const m of line.matchAll(VALUE_RE)) {
@@ -395,7 +404,7 @@ export async function collectCandidates(
           where,
           snippet: line.trim().slice(0, 240),
           value,
-          keyed: SECRET_WORDS.test(line),
+          keyed: hasSecretWord(line),
           ...(blob ? { commit: undefined } : {}),
         });
       }
