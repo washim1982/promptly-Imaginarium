@@ -3,7 +3,7 @@
 // Collapses to an icon rail; the open section and collapsed state are
 // remembered per viewer.
 
-import { useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { FolderOpen, HardDrive, History, Mail, PanelLeftClose, PanelLeftOpen, SquarePen } from 'lucide-react';
 import { useLlm } from '../../../state/LlmContext';
 import ConversationSidebar from '../ConversationSidebar';
@@ -11,11 +11,26 @@ import { EmailPanel } from './EmailPanel';
 import { DrivePanel } from './DrivePanel';
 import { WorkspacePanel } from './WorkspacePanel';
 import { AccountArea, RailAccount } from './AppLogin';
+import { SidebarResizer } from './SidebarResizer';
 
 export type SidebarSection = 'email' | 'drive' | 'workspace' | 'history';
 
 const SECTION_KEY = 'imaginarium.chatSidebar.section';
 const COLLAPSED_KEY = 'imaginarium.chatSidebar.collapsed';
+const WIDTH_KEY = 'imaginarium.chatSidebar.width';
+
+const DEFAULT_WIDTH = 288;
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 560;
+/** Dragging narrower than this collapses to the rail instead. */
+const COLLAPSE_AT = 190;
+/** The chat itself always keeps at least this much room. */
+const CHAT_MIN = 420;
+
+function clampWidth(value: number): number {
+  const max = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, window.innerWidth - CHAT_MIN));
+  return Math.round(Math.max(MIN_WIDTH, Math.min(value, max)));
+}
 
 function read(key: string): string | null {
   try {
@@ -46,6 +61,23 @@ export default function ChatSidebar() {
     return SECTIONS.some((s) => s.id === saved) ? (saved as SidebarSection) : 'history';
   });
   const [collapsed, setCollapsedState] = useState(() => read(COLLAPSED_KEY) === '1');
+  const [width, setWidthState] = useState(() => {
+    const saved = Number(read(WIDTH_KEY));
+    return Number.isFinite(saved) && saved > 0 ? clampWidth(saved) : DEFAULT_WIDTH;
+  });
+
+  const setWidth = useCallback((next: number) => {
+    const clamped = clampWidth(next);
+    setWidthState(clamped);
+    write(WIDTH_KEY, String(clamped));
+  }, []);
+
+  // Shrinking the window must not push the chat out of the way.
+  useEffect(() => {
+    const onResize = () => setWidthState((w) => clampWidth(w));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const setSection = (s: SidebarSection) => {
     setSectionState(s);
@@ -90,7 +122,12 @@ export default function ChatSidebar() {
   }
 
   return (
-    <aside className="glass flex h-full w-[288px] shrink-0 flex-col overflow-hidden rounded-[var(--radius-panel)]" aria-label="Chat sidebar">
+    <>
+      <aside
+        className="glass flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-panel)]"
+        style={{ width }}
+        aria-label="Chat sidebar"
+      >
       <div className="flex items-center gap-2 px-3 pb-2 pt-3">
         <button
           onClick={newChat}
@@ -146,7 +183,19 @@ export default function ChatSidebar() {
       </div>
 
       <AccountArea />
-    </aside>
+      </aside>
+      <SidebarResizer
+        width={width}
+        onResize={setWidth}
+        onReset={() => setWidth(DEFAULT_WIDTH)}
+        onCollapse={(restoreWidth) => {
+          // Keep the width the user had, so expanding returns to it.
+          setWidth(restoreWidth);
+          setCollapsed(true);
+        }}
+        collapseAt={COLLAPSE_AT}
+      />
+    </>
   );
 }
 

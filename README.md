@@ -250,8 +250,11 @@ follows the accent from Settings) and its browser demo mode.
 
 ## Chat sidebar
 
-The chat page has a sidebar on the left. You can collapse it to an icon rail,
-and it remembers the section you had open.
+The chat page has a sidebar on the left. Drag its right edge to resize it
+(240–560 px, never squeezing the chat below ~420 px); double-click the edge to
+reset, or focus it and use the arrow keys. Dragging it narrow snaps it to an
+icon rail, and expanding brings back the width you had. The width, the
+collapsed state and the open section are all remembered.
 
 - **New chat**
 - **Email:** your Gmail inbox. You can search it with Gmail syntax (`from:`,
