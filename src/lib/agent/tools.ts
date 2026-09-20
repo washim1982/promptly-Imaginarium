@@ -59,6 +59,13 @@ export const TOOL_SPECS: ToolSpec[] = [
     effectful: true,
   },
   {
+    name: 'append_file',
+    summary:
+      'Add text to the end of a workspace file, creating it if needed. Use this to build a long document across several steps instead of rewriting it. The user must approve.',
+    example: '{"path": "notes/review.md", "content": "## Section 2\\n- finding"}',
+    effectful: true,
+  },
+  {
     name: 'run_command',
     summary: 'Run a PowerShell command in the workspace folder (60 s limit). The user must approve.',
     example: '{"command": "npm test"}',
@@ -88,6 +95,7 @@ interface AgentBridge {
   readFile(rel: string, start?: number, end?: number): Promise<string>;
   searchFiles(pattern: string, glob?: string): Promise<string>;
   writeFile(rel: string, content: string): Promise<string>;
+  appendFile(rel: string, content: string): Promise<string>;
   runCommand(command: string): Promise<{ ok: boolean; output: string }>;
   fetchUrl(url: string): Promise<string>;
 }
@@ -144,6 +152,8 @@ export function createToolRuntime(taint: TaintState): ToolRuntime {
           return `Search /${str(a.pattern)}/${a.glob ? ` in ${str(a.glob)}` : ''}`;
         case 'write_file':
           return `Write ${str(a.path)} (${str(a.content).length} chars)`;
+        case 'append_file':
+          return `Append to ${str(a.path)} (${str(a.content).length} chars)`;
         case 'run_command':
           return `Run: ${str(a.command)}`;
         case 'web_search':
@@ -159,6 +169,7 @@ export function createToolRuntime(taint: TaintState): ToolRuntime {
       const spec = SPEC.get(call.tool);
       if (!spec) return null;
       if (call.tool === 'write_file') return 'Writes a file on your disk.';
+      if (call.tool === 'append_file') return 'Adds to a file on your disk.';
       if (call.tool === 'run_command') return 'Runs a program on your computer.';
       if (call.tool === 'fetch_url' && isPrivateHost(str(call.args.url))) {
         return 'Reads from a local or private-network address.';
@@ -192,6 +203,9 @@ export function createToolRuntime(taint: TaintState): ToolRuntime {
             break;
           case 'write_file':
             output = await bridge().writeFile(need('path'), str(a.content));
+            break;
+          case 'append_file':
+            output = await bridge().appendFile(need('path'), need('content'));
             break;
           case 'run_command':
             return await bridge().runCommand(need('command'));

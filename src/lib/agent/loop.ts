@@ -149,6 +149,10 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
 
   const summarize = (prompt: AgentMessage[]) => collect(llm(normalizeTurns(prompt), signal));
   const notice = (kind: AgentNoticeKind, message: string) => onEvent({ type: 'notice', kind, message });
+  // Repeated compaction inside one turn means the work doesn't fit the window:
+  // the model keeps losing what it just read and starts over. Say so once,
+  // rather than letting it grind through its round budget.
+  let compactions = 0;
 
   for (round = 1; round <= maxRounds; round++) {
     if (signal.aborted) break;
@@ -163,6 +167,13 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
         compaction = { summary: compacted.summary, historySummarized: compacted.historySummarized };
       }
       notice('compacted', `Context compacted: ${compacted.summarized} earlier messages summarized.`);
+      if (++compactions === 2) {
+        notice(
+          'context_pressure',
+          'This task needs more context than the model has. Raise "Context window" in Settings (and reload the model), ' +
+            'or ask for it in smaller steps — otherwise earlier findings are summarised away as it works.',
+        );
+      }
     }
     const request = trimForContext(messages, budget);
     if (request.length < messages.length) {

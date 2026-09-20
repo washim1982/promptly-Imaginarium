@@ -95,6 +95,16 @@ export function buildTurnMessages(
     messages.push({ role: m.role, kind: 'history', content: m.text });
     historyIndex.push(i);
   });
+  // The task often arrives one turn before the message that starts the tool
+  // work ("…create FINAL-VERDICT.md" then "all the docs in AGENT_RESEARCH").
+  // Tag the most recent instruction so compaction and trimming keep it: losing
+  // it leaves the agent doing tool calls with no idea what it is for.
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].kind === 'history' && messages[i].role === 'user') {
+      messages[i] = { ...messages[i], kind: 'objective' };
+      break;
+    }
+  }
   messages.push({ role: 'user', kind: 'request', content: request });
   return { messages, historyIndex };
 }

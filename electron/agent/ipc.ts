@@ -66,6 +66,9 @@ export function registerAgentIpc(): void {
   ipcMain.handle('agent:writeFile', async (_e, rel: string, content: string) =>
     tools.writeTextFile(await requireWorkspace(), String(rel ?? ''), String(content ?? '')),
   );
+  ipcMain.handle('agent:appendFile', async (_e, rel: string, content: string) =>
+    tools.appendTextFile(await requireWorkspace(), String(rel ?? ''), String(content ?? '')),
+  );
   ipcMain.handle('agent:runCommand', async (_e, command: string) =>
     tools.runCommand(await requireWorkspace(), String(command ?? '')),
   );

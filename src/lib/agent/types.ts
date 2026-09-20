@@ -16,6 +16,7 @@ export interface AgentMessage {
     | 'system' // the agent system prompt (never dropped)
     | 'summary' // a compaction summary
     | 'history' // a prior chat turn (user text or assistant final answer)
+    | 'objective' // the most recent instruction from an earlier turn (never dropped)
     | 'request' // the current user request
     | 'tool_call' // assistant round that contained tool blocks
     | 'tool_result' // untrusted tool output fed back to the model
@@ -54,6 +55,7 @@ export type AgentNoticeKind =
   | 'budget_exceeded'
   | 'rounds_exhausted'
   | 'compacted'
+  | 'context_pressure'
   | 'trimmed'
   | 'empty_response'
   | 'error';

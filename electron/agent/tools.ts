@@ -7,7 +7,7 @@
 // the renderer (src/lib/agent/tools.ts) before any of this runs.
 
 import { spawn, execFile } from 'node:child_process';
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open as fsOpen, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertSafeRelativePath } from '../svn/pathSafety';
 
@@ -16,6 +16,8 @@ const SKIP_DIRS = new Set([
   '__pycache__', '.idea', '.vs', 'bin', 'obj', 'target', 'dist-electron',
 ]);
 const MAX_READ_BYTES = 400_000;
+/** A file the agent builds up with append_file stops here. */
+const MAX_APPEND_BYTES = 2_000_000;
 const MAX_SEARCH_FILE_BYTES = 1_000_000;
 const MAX_COMMAND_OUTPUT = 64_000;
 
@@ -180,6 +182,38 @@ export async function writeTextFile(root: string, rel: string, content: string):
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, content, 'utf8');
   return `${existing ? 'Overwrote' : 'Created'} ${rel} (${Buffer.byteLength(content)} bytes).`;
+}
+
+/**
+ * Add to the end of a workspace file, creating it if needed.
+ *
+ * Lets a long document be built across many rounds without holding the whole
+ * thing in context, which write_file would require (it replaces the file).
+ */
+export async function appendTextFile(root: string, rel: string, content: string): Promise<string> {
+  const file = await resolveInside(root, rel, false);
+  const existing = await stat(file).catch(() => null);
+  if (existing?.isDirectory()) throw new Error(`${rel} is a directory.`);
+  const addition = Buffer.byteLength(content);
+  if ((existing?.size ?? 0) + addition > MAX_APPEND_BYTES) {
+    throw new Error(`${rel} would exceed ${MAX_APPEND_BYTES / 1000} KB. Start a new file instead.`);
+  }
+  await mkdir(path.dirname(file), { recursive: true });
+  // A newline between chunks, unless the file already ends with one.
+  let prefix = '';
+  if (existing?.size) {
+    const tail = Buffer.alloc(1);
+    const handle = await fsOpen(file, 'r');
+    try {
+      await handle.read(tail, 0, 1, existing.size - 1);
+    } finally {
+      await handle.close();
+    }
+    if (tail.toString('utf8') !== '\n') prefix = '\n';
+  }
+  await appendFile(file, prefix + content, 'utf8');
+  const total = (existing?.size ?? 0) + addition + prefix.length;
+  return `${existing ? 'Appended to' : 'Created'} ${rel} (+${addition} bytes, ${total} bytes total).`;
 }
 
 /**

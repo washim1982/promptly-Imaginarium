@@ -170,7 +170,7 @@ export function trimForContext(messages: AgentMessage[], budget: number): AgentM
   const fits = () => estimateTokens([...essential, ...prior, ...current]) <= budget;
   const dropOldest = (limit: number) => {
     for (let i = 0; i < Math.min(limit, prior.length) && !fits(); ) {
-      if (prior[i].kind === 'request') i += 1;
+      if (prior[i].kind === 'request' || prior[i].kind === 'objective') i += 1;
       else {
         prior.splice(i, 1);
         limit -= 1;
@@ -184,7 +184,11 @@ export function trimForContext(messages: AgentMessage[], budget: number): AgentM
   convo = dropOrphanResults([...prior, ...current]);
 
   // 4. Still over: shrink the latest message, then the request — never drop them.
-  for (const pick of [() => convo.length - 1, () => convo.findIndex((m) => m.kind === 'request')]) {
+  for (const pick of [
+    () => convo.length - 1,
+    () => convo.findIndex((m) => m.kind === 'objective'),
+    () => convo.findIndex((m) => m.kind === 'request'),
+  ]) {
     if (estimateTokens([...essential, ...convo]) <= budget) break;
     const idx = pick();
     if (idx < 0) continue;
@@ -270,7 +274,7 @@ export async function maybeCompact(
   // one agent turn all the growth comes after the request, so excluding it (as
   // a first version of this port did) meant compaction could never fire
   // mid-turn and a long tool loop could only be trimmed.
-  const rest = convo.filter((m) => m.kind !== 'request');
+  const rest = convo.filter((m) => m.kind !== 'request' && m.kind !== 'objective');
   if (rest.length < 4) return untouched;
   let split = Math.floor(rest.length / 2);
   // Keep a tool call and its result on the same side of the split.

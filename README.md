@@ -397,6 +397,7 @@ rejected.
 |---|---|---|
 | `list_dir`, `read_file`, `search_files` | Browse and read the workspace | No |
 | `write_file` | Create or overwrite a workspace file | **Always** |
+| `append_file` | Add to the end of a workspace file, creating it if needed (2 MB cap) | **Always** |
 | `run_command` | PowerShell in the workspace (60 s timeout, process tree killed) | **Always** |
 | `web_search`, `fetch_url` | OrioSearch / fetch a page as text | Once workspace files have been read; always for private-network hosts |
 
@@ -413,6 +414,24 @@ anything that could send data off the machine needs your approval.
 - The model can call tools with fenced blocks (```` ```read_file ````), or with
   Gemma 4's native `<|tool_call>call:name{…}` syntax, which it tends to use
   whatever the prompt asks.
+
+**Large jobs and the context window**
+
+A task like "read these 15 documents and write one summary file" is limited by
+the model's context window, not by the tools. At the default 8192 it does not
+fit: the agent reads a few files, compaction summarises them away, and it can
+end up listing the folder again instead of finishing. Measured here with 15
+documents of ~150 lines each: **8192 fails, 32768 succeeds** (Settings →
+Context window, then reload the model — it sizes the KV cache, so it costs GPU
+memory). The agent now says so itself when compaction fires twice in one turn.
+Alternatively, ask in smaller steps ("summarise docs 1–5 into notes.md", then
+extend it) — `append_file` exists for exactly this: the agent writes the first
+section, then adds each later one without re-sending the document it has
+already written.
+
+The instruction also survives compaction now: the most recent thing you asked
+for is pinned alongside the current message, so a task given one message
+earlier ("…save it as FINAL-VERDICT.md") is not summarised away mid-run.
 
 **Context management**
 - The agent rebuilds the model's context from its own message list each round

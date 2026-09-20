@@ -119,6 +119,7 @@ const agent = {
   readFile: (rel: string, start?: number, end?: number) => ipcRenderer.invoke('agent:readFile', rel, start, end),
   searchFiles: (pattern: string, glob?: string) => ipcRenderer.invoke('agent:searchFiles', pattern, glob),
   writeFile: (rel: string, content: string) => ipcRenderer.invoke('agent:writeFile', rel, content),
+  appendFile: (rel: string, content: string) => ipcRenderer.invoke('agent:appendFile', rel, content),
   runCommand: (command: string) => ipcRenderer.invoke('agent:runCommand', command),
   fetchUrl: (url: string) => ipcRenderer.invoke('agent:fetchUrl', url),
   listEntries: (rel: string) => ipcRenderer.invoke('agent:listEntries', rel),
