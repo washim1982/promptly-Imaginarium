@@ -55,7 +55,7 @@ export function GoogleGate({ need, children }: { need: 'gmail' | 'drive'; childr
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <p className="text-[13px] font-semibold text-white">Connect your Google account</p>
           <p className="mt-1 text-[11.5px] leading-relaxed text-white/50">
-            Google opens in your browser. Imaginarium asks for <b className="text-white/70">read-only</b> access to Gmail and
+            Google opens in your browser. OMNI-STUDIO asks for <b className="text-white/70">read-only</b> access to Gmail and
             Drive; nothing is sent or changed, and mail stays on this PC with the local model.
           </p>
         </div>

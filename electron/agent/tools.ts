@@ -269,7 +269,7 @@ export async function fetchUrl(url: string): Promise<string> {
   const res = await fetch(parsed, {
     signal: AbortSignal.timeout(20_000),
     redirect: 'follow',
-    headers: { 'user-agent': 'Imaginarium-Agent/1.0', accept: 'text/html,text/plain,application/json;q=0.9,*/*;q=0.5' },
+    headers: { 'user-agent': 'OMNI-STUDIO-Agent/1.0', accept: 'text/html,text/plain,application/json;q=0.9,*/*;q=0.5' },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
   const type = res.headers.get('content-type') ?? '';

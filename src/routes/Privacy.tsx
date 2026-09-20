@@ -12,7 +12,7 @@ export default function Privacy() {
 
       <section className="mt-8 space-y-4 text-[15px] leading-relaxed text-white/80">
         <p>
-          Imaginarium is designed to be private by default. It runs AI models
+          OMNI-STUDIO is designed to be private by default. It runs AI models
           entirely on this computer, so your data stays on your device.
         </p>
 

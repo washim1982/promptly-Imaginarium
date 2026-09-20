@@ -14,7 +14,7 @@ export default function UnsupportedScreen() {
         <h1 className="text-2xl font-semibold text-white">WebGPU is required</h1>
         <p className="mt-3 text-sm text-white/55">
           {gpu?.reason ??
-            'No WebGPU device is available. Imaginarium runs Gemma on your GPU and has no CPU fallback.'}
+            'No WebGPU device is available. OMNI-STUDIO runs Gemma on your GPU and has no CPU fallback.'}
         </p>
         <div className="mono mt-6 space-y-1 text-left text-[11px] text-white/40">
           <p>· Update your GPU driver (NVIDIA / AMD / Intel)</p>

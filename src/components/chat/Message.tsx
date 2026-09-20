@@ -45,7 +45,7 @@ export default function Message({ message }: { message: ChatMessage }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="mono mb-1 flex items-center gap-2 text-[10px] text-white/40">
-          <span>IMAGINARIUM</span>
+          <span>OMNI-STUDIO</span>
           <span>·</span>
           <span>{time(message.createdAt)}</span>
         </div>

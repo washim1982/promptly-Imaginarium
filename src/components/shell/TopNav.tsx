@@ -25,7 +25,7 @@ export default function TopNav({
       >
         <span className="text-neon text-lg">✦</span>
         <span className="text-sm font-bold tracking-[0.2em] text-white">
-          IMAGINARIUM
+          OMNI-STUDIO
         </span>
       </Link>
 

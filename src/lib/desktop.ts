@@ -45,7 +45,7 @@ export const desktop: DesktopBridge | undefined = window.imaginarium;
 export function requireDesktop(): DesktopBridge {
   if (!desktop) {
     throw new Error(
-      'This build must run inside the Imaginarium desktop app (the native ' +
+      'This build must run inside the OMNI-STUDIO desktop app (the native ' +
         'bridge is missing). Start it with `npm run dev`.',
     );
   }

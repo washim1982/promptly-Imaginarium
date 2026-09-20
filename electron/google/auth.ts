@@ -66,7 +66,7 @@ export interface GoogleStatus {
   appLoggedIn: boolean;
 }
 
-const LOGIN_REQUIRED = 'Log in to Imaginarium (Auth0) before using Gmail and Google Drive.';
+const LOGIN_REQUIRED = 'Log in to OMNI-STUDIO (Auth0) before using Gmail and Google Drive.';
 
 const clientFile = () => path.join(app.getPath('userData'), 'google-oauth-client.json');
 const accountFile = () => path.join(app.getPath('userData'), 'google-account.bin');

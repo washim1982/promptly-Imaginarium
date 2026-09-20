@@ -1,4 +1,4 @@
-// Imaginarium desktop — main process.
+// OMNI-STUDIO desktop — main process.
 //
 // Three jobs:
 //   1. Serve the renderer over a custom `app://` scheme with COOP/COEP so the
@@ -30,10 +30,18 @@ import { registerGitIpc } from './git/ipc';
 import { registerGoogleIpc } from './google/ipc';
 import { registerAuth0Ipc } from './auth0/ipc';
 import { registerAgentIpc } from './agent/ipc';
+import { migrateLegacyUserData } from './migrateUserData';
 
 const SCHEME = 'app';
+// Internal only — it never appears in the UI, and changing it would invalidate
+// the renderer's origin (and with it every saved chat in IndexedDB).
 const HOST = 'imaginarium';
 const APP_ORIGIN = `${SCHEME}://${HOST}`;
+
+// Carry the data folder over from the old product name, before anything reads it.
+const migration = migrateLegacyUserData();
+if (migration.moved) console.log(`[omni-studio] moved settings from ${migration.from} to ${migration.to}`);
+else if (migration.reason === 'failed') console.warn('[omni-studio] could not move the old settings folder:', migration.error);
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const IS_DEV = Boolean(DEV_SERVER_URL);

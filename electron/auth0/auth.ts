@@ -1,5 +1,5 @@
 // Optional app login with Auth0 (a "Native" application). Logging in is not
-// needed to use Imaginarium, but it is required before a Google account can be
+// needed to use OMNI-STUDIO, but it is required before a Google account can be
 // connected for the chat sidebar's Email and Drive sections — and the
 // connected Google account belongs to the Auth0 user who connected it.
 //
@@ -234,7 +234,7 @@ export async function login(): Promise<Auth0Status> {
     expectedState: state,
     port: CALLBACK_PORT,
     path: CALLBACK_PATH,
-    successMessage: 'Logged in to Imaginarium.',
+    successMessage: 'Logged in to OMNI-STUDIO.',
     describeError: (error, description) =>
       error === 'access_denied' && !description
         ? 'Login was cancelled.'

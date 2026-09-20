@@ -177,7 +177,7 @@ const DEFAULT_SETTINGS: EngineConfig = {
   topP: 0.95,
   maxNumTokens: 8192,
   maxOutputTokens: 2048,
-  systemPrompt: 'You are Imaginarium, a helpful, concise assistant.',
+  systemPrompt: 'You are OMNI-STUDIO, a helpful, concise assistant.',
 };
 
 const SETTINGS_KEY = 'imaginarium.settings';

@@ -18,7 +18,7 @@ export default function Footer() {
   return (
     <footer className="mono flex shrink-0 items-center justify-center gap-3 py-5 text-[10px] text-white/30">
       <span title={info ? `Electron ${info.electron} · Chromium ${info.chrome}` : ''}>
-        Imaginarium {info?.version ?? ''}
+        OMNI-STUDIO {info?.version ?? ''}
       </span>
       <span>·</span>
       <Link to="/about" className="hover:text-white/60">

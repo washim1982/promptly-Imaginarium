@@ -17,10 +17,10 @@ export function pkcePair(): { verifier: string; challenge: string } {
 }
 
 export const resultPage = (ok: boolean, message: string) =>
-  `<!doctype html><meta charset="utf-8"><title>Imaginarium</title>
+  `<!doctype html><meta charset="utf-8"><title>OMNI-STUDIO</title>
 <body style="font-family:Segoe UI,system-ui,sans-serif;background:#0c0e12;color:#ece9f1;display:grid;place-items:center;height:100vh;margin:0">
 <div style="text-align:center"><div style="font-size:40px;color:${ok ? '#3fb950' : '#f85149'}">${ok ? '✓' : '✕'}</div>
-<h2 style="font-weight:600">${message}</h2><p style="color:#8b8597">You can close this tab and return to Imaginarium.</p></div></body>`;
+<h2 style="font-weight:600">${message}</h2><p style="color:#8b8597">You can close this tab and return to OMNI-STUDIO.</p></div></body>`;
 
 export interface LoopbackOptions {
   expectedState: string;

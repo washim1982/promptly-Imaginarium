@@ -4,7 +4,7 @@ import { openExternal } from '../lib/desktop';
 export default function About() {
   return (
     <div className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-10">
-      <h1 className="text-3xl font-semibold text-white">About Imaginarium</h1>
+      <h1 className="text-3xl font-semibold text-white">About OMNI-STUDIO</h1>
       <p className="mt-3 text-white/60">
         A private AI workspace that runs Google's Gemma models entirely on your
         own machine.
@@ -12,7 +12,7 @@ export default function About() {
 
       <section className="mt-8 space-y-4 text-[15px] leading-relaxed text-white/80">
         <p>
-          Imaginarium runs large language models locally using{' '}
+          OMNI-STUDIO runs large language models locally using{' '}
           <button
             type="button"
             onClick={() =>

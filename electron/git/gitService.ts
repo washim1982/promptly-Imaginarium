@@ -103,7 +103,7 @@ export function runGit(args: string[], cwd?: string, options: CommandOptions = {
       reject(
         new Error(
           error.code === 'ENOENT'
-            ? 'Git was not found. Install Git for Windows (it includes Git Credential Manager) and restart Imaginarium.'
+            ? 'Git was not found. Install Git for Windows (it includes Git Credential Manager) and restart OMNI-STUDIO.'
             : error.message,
         ),
       );

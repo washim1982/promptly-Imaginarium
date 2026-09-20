@@ -1,6 +1,6 @@
-# Imaginarium — Windows desktop
+# OMNI-STUDIO — Windows desktop
 
-A native Windows build of the Imaginarium AI workspace. Same interface as the web
+A native Windows build of the OMNI-STUDIO AI workspace (formerly Imaginarium). Same interface as the web
 app, same inference: **any LiteRT-LM `.litertlm` model** running entirely on your
 GPU through **LiteRT-LM + WebGPU**. No inference server, no account, nothing
 leaves the machine.
@@ -36,7 +36,7 @@ window's own header doubles as the title bar, and SEO/OG metadata is gone.
 ### The model library
 
 There are no fixed model slots. `electron/main.ts` keeps a library at
-`%APPDATA%\Imaginarium\models.json` — a list of entries, each with a generated
+`%APPDATA%\OMNI-STUDIO\models.json` — a list of entries, each with a generated
 id, a renameable label (defaulting to the filename), and the file's path. **Add
 Model** opens a native multi-select picker; every file is validated on its own,
 so one bad pick doesn't discard the good ones, and adding a path that's already
@@ -54,7 +54,7 @@ disk → wasm heap without ever becoming a `Blob`.
 Entries whose files have been moved or deleted are pruned automatically on every
 listing. Files you picked from your own disk are **never deleted** — "remove"
 only drops the library entry. Only models this app downloaded itself into
-`%APPDATA%\Imaginarium\models` are deleted from disk, and the confirm dialog says
+`%APPDATA%\OMNI-STUDIO\models` are deleted from disk, and the confirm dialog says
 which case you're in.
 
 The registry is versioned; a v1 file from the two-slot era is migrated to the
@@ -125,7 +125,7 @@ resizable panels, and AI review.
   switches the engine to E4B (so Chat uses E4B afterwards, too). The context
   budget is derived from the Context window / Max reply tokens settings.
 - **Password** is stored with Electron `safeStorage` (Windows DPAPI), in
-  `%APPDATA%\Imaginarium\svn-settings.json`.
+  `%APPDATA%\OMNI-STUDIO\svn-settings.json`.
 - **Theme:** the tab's palette resolves to the app's tokens (glass panels, ink,
   `--color-neon`), so it follows the accent chosen in Settings. Styles are scoped
   under `.svn-studio` with `--svn-*` tokens to avoid Tailwind's `--radius-*` /
@@ -245,7 +245,7 @@ Limits worth knowing:
 | Discard used `window.confirm` | Uses the app's own dialog |
 | Status changes made outside the app went unnoticed until Refresh | Refreshes quietly when the window regains focus |
 
-Not ported: Git Pilot's light/system theme picker (Imaginarium is dark-only and
+Not ported: Git Pilot's light/system theme picker (OMNI-STUDIO is dark-only and
 follows the accent from Settings) and its browser demo mode.
 
 ## Chat sidebar
@@ -309,7 +309,7 @@ Setup in the [Auth0 Dashboard](https://manage.auth0.com/) → Applications → y
 3. *(Recommended)* **Settings → Refresh Token Rotation:** turn on Rotation.
 4. **Connections** tab: enable the login methods you want, e.g.
    Username-Password and/or Google.
-5. In Imaginarium, click **Log in (optional)**, paste the **Domain** (e.g.
+5. In OMNI-STUDIO, click **Log in (optional)**, paste the **Domain** (e.g.
    `your-tenant.us.auth0.com`) and **Client ID** from Settings → Basic
    Information, then **Save** → **Log in**. Auth0's login page opens in your
    browser.
@@ -327,7 +327,7 @@ account** once, which uses the Google client below.
 
 Requires the Auth0 login above. Access is **read-only** (`gmail.readonly`, `drive.readonly`), so nothing can be
 sent, changed or deleted. Mail and files are read by the main process, and only
-the local model sees them. Imaginarium signs in with the flow Google recommends
+the local model sees them. OMNI-STUDIO signs in with the flow Google recommends
 for desktop apps:
 - The consent page opens in your own browser, and Google redirects back to a
   one-time listener on `127.0.0.1`. The request is protected with PKCE and a
@@ -341,7 +341,7 @@ app, and setting one up is free and takes about 5 minutes.
 
 1. **Create a project.** Go to
    [console.cloud.google.com](https://console.cloud.google.com/) and create a
-   new project, e.g. "Imaginarium".
+   new project, e.g. "OMNI-STUDIO".
 2. **Enable the APIs.** Under APIs & Services → Library, enable **Gmail API**
    and **Google Drive API**.
 3. **Set up the OAuth consent screen.** Under APIs & Services → OAuth consent
@@ -352,7 +352,7 @@ app, and setting one up is free and takes about 5 minutes.
 4. **Create the client.** Under Credentials → Create credentials → **OAuth
    client ID**, choose Application type **Desktop app**, then Create. Copy the
    **Client ID** and **Client secret**.
-5. **Connect in Imaginarium.** Log in (Auth0) first. Then open Chat → sidebar → **Email**, paste both
+5. **Connect in OMNI-STUDIO.** Log in (Auth0) first. Then open Chat → sidebar → **Email**, paste both
    values, then **Save** → **Connect Google account**. Your browser opens.
    Pick the account and continue past the "Google hasn't verified this app"
    screen (it's your own app: Advanced → Go to …). Leave both permissions
@@ -366,7 +366,7 @@ the saved values.
 (`auth0-client.json`, `google-oauth-client.json`, the encrypted `*.bin` token
 files) are in `.gitignore`; only `.env.example`, with placeholder names, is
 committed. Client IDs and tokens the app saves at runtime live in
-`%APPDATA%\Imaginarium\`, outside the repository.
+`%APPDATA%\OMNI-STUDIO\`, outside the repository.
 
 **One set of credentials for every PC.** The Auth0 application and the Google
 OAuth client are created once, not per machine: each user just logs in and
@@ -376,7 +376,7 @@ list (max 100, re-consent every 7 days).
 
 Notes:
 - While the consent screen is in **Testing** status, Google expires sign-ins
-  after **7 days**. Imaginarium then says the sign-in expired; click Connect
+  after **7 days**. OMNI-STUDIO then says the sign-in expired; click Connect
   again. Publishing the app to Production (APIs & Services → OAuth consent
   screen → Publish) removes the limit. Restricted scopes such as Gmail then
   show the unverified-app warning, which is fine for personal use.

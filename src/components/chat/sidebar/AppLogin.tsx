@@ -311,7 +311,7 @@ export function LoginRequired({ what }: { what: string }) {
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
         <p className="text-[13px] font-semibold text-white">Log in to use {what}</p>
         <p className="mt-1 text-[11.5px] leading-relaxed text-white/50">
-          Chat works without an account, but connecting Gmail and Google Drive requires logging in to Imaginarium. The Google
+          Chat works without an account, but connecting Gmail and Google Drive requires logging in to OMNI-STUDIO. The Google
           account you connect is tied to your login.
         </p>
       </div>
