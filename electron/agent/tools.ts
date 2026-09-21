@@ -10,6 +10,7 @@ import { spawn, execFile } from 'node:child_process';
 import { appendFile, mkdir, open as fsOpen, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertSafeRelativePath } from '../svn/pathSafety';
+import { httpFetch } from '../oauth/http';
 
 const SKIP_DIRS = new Set([
   '.git', '.svn', 'node_modules', 'dist', 'build', 'out', 'release', '.next', '.venv', 'venv',
@@ -300,9 +301,12 @@ export async function fetchUrl(url: string): Promise<string> {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http and https URLs can be fetched.');
   }
-  const res = await fetch(parsed, {
-    signal: AbortSignal.timeout(20_000),
-    redirect: 'follow',
+  // net.fetch, not Node's fetch: Chromium's stack honours the system proxy
+  // (PAC/WPAD) and the Windows certificate store, so this still works behind a
+  // corporate proxy or a TLS-inspecting gateway.
+  const res = await httpFetch(parsed.toString(), {
+    timeoutMs: 20_000,
+    retries: 1,
     headers: { 'user-agent': 'OMNI-STUDIO-Agent/1.0', accept: 'text/html,text/plain,application/json;q=0.9,*/*;q=0.5' },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);

@@ -4,6 +4,7 @@ import { CHAT_WIDTHS } from '../lib/ui';
 import { THEMES, isValidHex, resolveAccent } from '../lib/themes';
 import { desktop, formatBytes, shortenPath } from '../lib/desktop';
 import { usePrompt } from './PromptDialog';
+import WebSearchSettings from './WebSearchSettings';
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const {
@@ -346,6 +347,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             Stops a single reply from running away. Applies to the next reply.
           </p>
         </section>
+
+        <WebSearchSettings />
 
         {/* Context window */}
         <section className="mb-7">

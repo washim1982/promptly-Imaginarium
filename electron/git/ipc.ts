@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import * as git from './gitService';
-import { scanRepository, collectCandidates } from './secretScan';
+import { scanRepository, scanStaged, collectCandidates } from './secretScan';
 import { removeSecrets, forcePush } from './historyRewrite';
 import type { RecentRepo } from './types';
 
@@ -149,6 +149,15 @@ export function registerGitIpc(): void {
     const root = await git.resolveRepoRoot(repo);
     const { secrets, ...result } = await scanRepository(root);
     lastScan = { root, secrets };
+    return result;
+  });
+
+  // Staged-only scan, for the check before a commit. Deliberately does not
+  // touch `lastScan`: these values are not in the history yet, so they must
+  // never be handed to removeSecrets, which rewrites commits.
+  ipcMain.handle('git:scanStaged', async (_e, repo: string) => {
+    const root = await git.resolveRepoRoot(repo);
+    const { secrets: _secrets, ...result } = await scanStaged(root);
     return result;
   });
 

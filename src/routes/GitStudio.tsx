@@ -25,7 +25,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { errorMessage, gitApi } from '../lib/git/api';
+import { errorMessage, gitApi, type ScanResult } from '../lib/git/api';
 import type { AuthInfo, OperationResult, RecentRepo, RepoState } from '../lib/git/types';
 import { Modal, Spinner } from '../components/git/Modal';
 import { Sidebar, Welcome } from '../components/git/Sidebar';
@@ -86,6 +86,10 @@ export default function GitStudio() {
   // undefined while the Git Credential Manager check is running.
   const [auth, setAuth] = useState<AuthInfo | null | undefined>(undefined);
   const [scanOpen, setScanOpen] = useState(false);
+  const [scanningStaged, setScanningStaged] = useState(false);
+  // Set when a pre-commit scan found something (or could not run); holds the
+  // commit it is standing in front of. `scan: null` = the scan itself failed.
+  const [commitGate, setCommitGate] = useState<{ scan: ScanResult | null; root: string; message: string } | null>(null);
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -193,6 +197,40 @@ export default function GitStudio() {
     },
     [notify, setBusyBoth],
   );
+
+  const doCommit = useCallback(
+    (root: string, message: string) =>
+      void perform(() => gitApi.commit(root, message)).then((ok) => ok && setCommitMessage('')),
+    [perform],
+  );
+
+  /**
+   * Commit, but scan the staged content first. A secret is cheap to fix before
+   * the commit exists and expensive afterwards — once it is in the history,
+   * taking it out means rewriting commits everyone else has to re-clone.
+   *
+   * If the scan itself fails the commit is not silently let through: the gate
+   * opens with the error, so the choice is the user's either way.
+   */
+  const commitWithScan = useCallback(async () => {
+    if (!repo || busyRef.current) return;
+    const root = repo.root;
+    const message = commitMessage;
+    setScanningStaged(true);
+    try {
+      const result = await gitApi.scanStaged(root);
+      if (result.findings.length) {
+        setCommitGate({ scan: result, root, message });
+        return;
+      }
+      doCommit(root, message);
+    } catch (error) {
+      notify('error', `Could not scan the staged changes: ${errorMessage(error)}`);
+      setCommitGate({ scan: null, root, message });
+    } finally {
+      setScanningStaged(false);
+    }
+  }, [repo, commitMessage, doCommit, notify]);
 
   const guarded = useCallback(
     async (work: () => Promise<void>) => {
@@ -360,7 +398,7 @@ export default function GitStudio() {
         <RepoWorkspace
           repo={repo}
           tab={tab}
-          busy={busy}
+          busy={busy || scanningStaged}
           selected={selected}
           commitMessage={commitMessage}
           onTab={setTab}
@@ -372,9 +410,7 @@ export default function GitStudio() {
             setDiscardFiles(files);
             setDialogName('discard');
           }}
-          onCommit={() =>
-            void perform(() => gitApi.commit(repo.root, commitMessage)).then((ok) => ok && setCommitMessage(''))
-          }
+          onCommit={() => void commitWithScan()}
           onSync={syncRepository}
           onRefresh={() => void refresh()}
           onSwitchBranch={(branch) =>
@@ -432,6 +468,18 @@ export default function GitStudio() {
         <SecretScanModal
           repo={repo}
           onClose={() => setScanOpen(false)}
+          onState={setRepo}
+          onNotify={notify}
+        />
+      )}
+
+      {commitGate && repo && (
+        <SecretScanModal
+          repo={repo}
+          initialMode="staged"
+          initialScan={commitGate.scan ?? undefined}
+          gate={{ onCommitAnyway: () => doCommit(commitGate.root, commitGate.message) }}
+          onClose={() => setCommitGate(null)}
           onState={setRepo}
           onNotify={notify}
         />

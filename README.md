@@ -176,10 +176,26 @@ Git Studio never sees or stores them. Git runs in the main process
 
 ### Scan: find and remove credentials (not in Git Pilot)
 
-**Scan** in the repository header looks for tokens, keys and passwords in two
-places: the files as they are now (tracked and untracked, respecting
-`.gitignore`) and **every blob in the history** — a credential deleted in a
-later commit is still in the repository, which is the case that matters.
+**Scan** in the repository header has two scopes, on tabs:
+
+| Scope | Looks at | Fix offered |
+|---|---|---|
+| **Staged changes** | Only what the next commit would record, read out of the index | Unstage the file, or edit it |
+| **Whole repository & history** | Files as they are now (tracked and untracked, respecting `.gitignore`) **and every blob in the history** | Remove + rewrite history (below) |
+
+The history scope is the one that matters after the fact: a credential deleted
+in a later commit is still in the repository.
+
+**Every commit is scanned first.** Pressing Commit runs the staged scan before
+anything is recorded; a clean result commits straight through. If something is
+found, the commit is held and you choose: **Cancel commit**, **Unstage** the
+offending files, or **Commit anyway**. A secret costs one click to fix before
+the commit exists and a history rewrite afterwards, so the check is on by
+default and cannot be silently skipped — if the scan itself fails, the same
+dialog opens with the error rather than letting the commit through unchecked.
+
+Staged findings are never removed by rewriting history: they are not in the
+history yet, so there is nothing to rewrite.
 
 It knows AWS keys, GitHub/GitLab/Slack/Stripe/npm tokens, Google API keys and
 OAuth client secrets, OpenAI and Anthropic keys, private-key blocks, JWTs,
@@ -399,7 +415,7 @@ rejected.
 | `write_file` | Create or overwrite a workspace file | **Always** |
 | `append_file` | Add to the end of a workspace file, creating it if needed (2 MB cap) | **Always** |
 | `run_command` | PowerShell in the workspace (60 s timeout, process tree killed) | **Always** |
-| `web_search`, `fetch_url` | OrioSearch / fetch a page as text | Once workspace files have been read; always for private-network hosts |
+| `web_search`, `fetch_url` | Tavily (or OrioSearch) / fetch a page as text | Once workspace files have been read; always for private-network hosts |
 
 The second approval rule is a taint gate. After the agent has read your files,
 anything that could send data off the machine needs your approval.
@@ -444,13 +460,36 @@ earlier ("…save it as FINAL-VERDICT.md") is not summarised away mid-run.
 - Summaries of earlier chat history are saved with the conversation.
 - The composer shows the current usage as `CTX used/budget`.
 
-## Web search (optional)
+## Web search
 
-Research and the agent's `web_search` tool call `/api/search` and `/api/extract`, which
-the main process forwards to a local **OrioSearch** instance (Tavily-compatible)
-at `http://localhost:8005`. Override with the `ORIOSEARCH_URL` environment
-variable. Without it running, search reports a clean error and the model answers
-from its own knowledge.
+**Settings → Web search.** Paste a [Tavily](https://app.tavily.com/home) API key
+(`tvly-…`), press **Test**, and chat, the agent's `web_search` tool and Research
+all use it. The key is encrypted with `safeStorage` (DPAPI) in the main process;
+the UI only ever shows it masked. `TAVILY_API_KEY` in the environment takes
+precedence and hides the input.
+
+Without a key it falls back to a local **OrioSearch** instance
+(Tavily-compatible) at `http://localhost:8005`, overridable with `ORIOSEARCH_URL`
+— which is why a key matters on any machine that isn't running one.
+
+Every request goes through Electron's `net.fetch`, not Node's: Chromium's stack
+honours the system proxy (PAC/WPAD) and the Windows certificate store, so this
+works behind a corporate proxy or a TLS-inspecting gateway, where Node's fetch
+fails with a bare `TypeError: fetch failed`.
+
+**Searching by itself.** Plain chat looks at your words before answering and
+searches when the question needs live data — "the latest version of X", "who is
+the current…", "bitcoin price right now", a year at or past this one. Timeless
+questions ("explain B-trees", "write a debounce function") never trigger it.
+"search the web for…" forces a search; "don't search" prevents one. A message
+carrying an email, a Drive file or a workspace file is never searched
+automatically — private data in the conversation gates anything leaving the
+machine, the same rule the agent's taint gate follows.
+
+Results come back with `[n]` citations and source chips under the reply. If the
+search fails or finds nothing, the reply says so in one line and answers from
+the model's own knowledge rather than pretending. Turn the whole behaviour off
+with the checkbox in the same Settings section.
 
 ## Layout
 

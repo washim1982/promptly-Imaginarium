@@ -37,7 +37,8 @@ import {
 } from '../lib/models';
 import type { ChatWidth } from '../lib/ui';
 import { DEFAULT_THEME_ID, resolveAccent } from '../lib/themes';
-import type { SearchResult } from '../lib/search';
+import { formatSearchForChat, webSearch, type SearchResult } from '../lib/search';
+import { decideAutoSearch, searchQueryFor } from '../lib/autoSearch';
 import { runAgentLoop } from '../lib/agent/loop';
 import { inputTokenBudget } from '../lib/agent/context';
 import { buildAgentSystemPrompt } from '../lib/agent/prompt';
@@ -126,6 +127,8 @@ interface LlmState {
   isGenerating: boolean;
   /** Agent mode: the model can call tools in a multi-round loop. */
   agentEnabled: boolean;
+  /** Plain chat searches the web by itself when a question needs live data. */
+  autoWebSearch: boolean;
   /** Folder the agent's file tools are confined to. */
   workspace: Workspace | null;
   /** Items from the sidebar waiting to go out with the next message. */
@@ -141,6 +144,7 @@ interface LlmState {
   setCustomGlow: (hex: string | null) => void;
   setActiveModel: (id: string) => void;
   setAgentEnabled: (on: boolean) => void;
+  setAutoWebSearch: (on: boolean) => void;
   pickWorkspace: () => Promise<void>;
   clearWorkspace: () => Promise<void>;
   /** Answer an agent step waiting for approval. */
@@ -186,6 +190,7 @@ const CHAT_WIDTH_KEY = 'imaginarium.chatWidth';
 const THEME_KEY = 'imaginarium.theme';
 const GLOW_KEY = 'imaginarium.customGlow';
 const AGENT_KEY = 'imaginarium.agent';
+const AUTO_SEARCH_KEY = 'imaginarium.autoWebSearch';
 // Replaced by the agent's web_search tool; cleared so a saved "on" can't linger.
 localStorage.removeItem('imaginarium.webSearch');
 
@@ -239,6 +244,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [agentEnabled, setAgentEnabledState] = useState<boolean>(
     localStorage.getItem(AGENT_KEY) === '1',
+  );
+  // On by default: a local model has no way to know its knowledge is stale.
+  const [autoWebSearch, setAutoWebSearchState] = useState<boolean>(
+    localStorage.getItem(AUTO_SEARCH_KEY) !== '0',
   );
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -306,6 +315,9 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem(AGENT_KEY, agentEnabled ? '1' : '0');
   }, [agentEnabled]);
+  useEffect(() => {
+    localStorage.setItem(AUTO_SEARCH_KEY, autoWebSearch ? '1' : '0');
+  }, [autoWebSearch]);
 
   // The workspace lives in the main process; read it once on startup.
   useEffect(() => {
@@ -403,6 +415,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
 
   const setAgentEnabled = useCallback((on: boolean) => {
     setAgentEnabledState(on);
+  }, []);
+
+  const setAutoWebSearch = useCallback((on: boolean) => {
+    setAutoWebSearchState(on);
   }, []);
 
   const agentBridge = () =>
@@ -669,7 +685,36 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             },
           }));
         } else {
-          for await (const token of engine.send(modelText)) {
+          // Plain chat: if the question is about now, answer it from the web
+          // rather than from a model whose knowledge stopped at training time.
+          let toSend = modelText;
+          const decision = autoWebSearch
+            ? decideAutoSearch(prompt, { hasAttachments: pending.length > 0 })
+            : { search: false as const, reason: 'not-needed' as const };
+          if (decision.search) {
+            update((m) => ({ ...m, searching: true }));
+            try {
+              const results = await webSearch(searchQueryFor(prompt));
+              if (results.length) {
+                toSend = formatSearchForChat(results, prompt);
+                update((m) => ({ ...m, sources: results }));
+              } else {
+                // A backend that answers but finds nothing is the quiet failure
+                // case: without this the user gets a stale answer and no clue.
+                update((m) => ({
+                  ...m,
+                  text: '_[No web results came back — answering from the model’s own knowledge, which may be out of date.]_\n\n',
+                }));
+              }
+            } catch (err) {
+              // Searching is an enhancement: a missing key or a blocked proxy
+              // must not cost the user their answer, but they should see why.
+              update((m) => ({ ...m, text: `_[Web search unavailable: ${cleanError(err)}]_\n\n` }));
+            } finally {
+              update((m) => ({ ...m, searching: false }));
+            }
+          }
+          for await (const token of engine.send(toSend)) {
             update((m) => ({ ...m, text: m.text + token }));
           }
         }
@@ -706,7 +751,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [status, isGenerating, persist, agentEnabled, workspace, settings, attachments],
+    [status, isGenerating, persist, agentEnabled, autoWebSearch, workspace, settings, attachments],
   );
 
   // Tool generations in flight (PDF, Research, SVN review). They share the one
@@ -840,6 +885,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       messages,
       isGenerating,
       agentEnabled,
+      autoWebSearch,
       workspace,
       attachments,
       addAttachment,
@@ -851,6 +897,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       setCustomGlow,
       setActiveModel,
       setAgentEnabled,
+      setAutoWebSearch,
       pickWorkspace,
       clearWorkspace,
       resolveApproval,
@@ -886,6 +933,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       messages,
       isGenerating,
       agentEnabled,
+      autoWebSearch,
       workspace,
       attachments,
       addAttachment,

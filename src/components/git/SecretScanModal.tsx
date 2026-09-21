@@ -11,6 +11,9 @@ import { findReviewModel, REVIEW_MODEL_LABEL, stripThinking } from '../../lib/sv
 import { BATCH_SIZE, buildBatchPrompt, DEEP_SCAN_SYSTEM, maskValue, parseVerdicts } from '../../lib/git/deepScan';
 import { Modal, Spinner } from './Modal';
 
+const whereLabel = (where: Finding['where'], commit?: string) =>
+  where === 'worktree' ? 'working tree' : where === 'staged' ? 'staged' : `history${commit ? ` · ${commit}` : ''}`;
+
 /** A suspect the model confirmed: shown like a finding, but never pre-ticked. */
 interface AiFinding {
   id: string;
@@ -32,20 +35,42 @@ type DeepState =
 
 type Phase = 'scanning' | 'results' | 'confirm' | 'removing' | 'done';
 
+/**
+ * 'staged' looks only at what the next commit would record; 'full' looks at
+ * every file and every blob in the history. Only the full scan can remove
+ * anything — staged values are not in the history yet, so there is nothing to
+ * rewrite; you fix the file or unstage it.
+ */
+export type ScanMode = 'staged' | 'full';
+
 export function SecretScanModal({
   repo,
   onClose,
   onState,
   onNotify,
+  initialMode = 'full',
+  initialScan,
+  gate,
 }: {
   repo: RepoState;
   onClose: () => void;
   onState: (state: RepoState) => void;
   onNotify: (type: 'success' | 'error', message: string) => void;
+  initialMode?: ScanMode;
+  /** A staged scan already run by the caller, so the gate opens instantly. */
+  initialScan?: ScanResult;
+  /** Present when this is the check in front of a commit. */
+  gate?: { onCommitAnyway: () => void };
 }) {
-  const [phase, setPhase] = useState<Phase>('scanning');
-  const [scan, setScan] = useState<ScanResult | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<ScanMode>(initialMode);
+  const [phase, setPhase] = useState<Phase>(initialScan ? 'results' : 'scanning');
+  const [scan, setScan] = useState<ScanResult | null>(initialScan ?? null);
+  const [unstaging, setUnstaging] = useState(false);
+  // Seeded from a handed-in scan too: that path skips runScan, which is what
+  // normally ticks everything.
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(initialScan?.findings.map((f) => f.id) ?? []),
+  );
   const [summary, setSummary] = useState<RemovalSummary | null>(null);
   const [error, setError] = useState('');
   const [pushed, setPushed] = useState(false);
@@ -118,7 +143,7 @@ export function SecretScanModal({
     setAiFindings([]);
     setDeep({ phase: 'idle' });
     try {
-      const result = await gitApi.scanSecrets(repo.root);
+      const result = mode === 'staged' ? await gitApi.scanStaged(repo.root) : await gitApi.scanSecrets(repo.root);
       setScan(result);
       setSelected(new Set(result.findings.map((f) => f.id)));
       setPhase('results');
@@ -126,11 +151,34 @@ export function SecretScanModal({
       setError(errorMessage(err));
       setPhase('results');
     }
-  }, [repo.root]);
+  }, [repo.root, mode]);
 
+  // A scan handed in by the caller is already the right one; don't redo it.
+  const skipFirst = useRef(Boolean(initialScan));
   useEffect(() => {
+    if (skipFirst.current) {
+      skipFirst.current = false;
+      return;
+    }
     void runScan();
   }, [runScan]);
+
+  /** Staged mode's fix: take the offending files back out of the commit. */
+  const unstageFindings = async () => {
+    const paths = [...new Set(findings.filter((f) => selected.has(f.id)).map((f) => f.path))];
+    if (!paths.length) return;
+    setUnstaging(true);
+    try {
+      const result = await gitApi.unstage(repo.root, paths);
+      if (result.state) onState(result.state);
+      onNotify('success', result.message || `Unstaged ${paths.length} file${paths.length === 1 ? '' : 's'}.`);
+      onClose();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setUnstaging(false);
+    }
+  };
 
   const remove = async () => {
     setPhase('removing');
@@ -172,20 +220,47 @@ export function SecretScanModal({
 
   return (
     <Modal
-      title="Scan for credentials"
+      title={gate ? 'Credentials in your staged changes' : 'Scan for credentials'}
       subtitle={
         phase === 'done'
           ? 'Removal finished.'
-          : 'Looks through your files and every commit for tokens, keys and passwords.'
+          : gate
+            ? 'Found before the commit was made — nothing has been committed.'
+            : mode === 'staged'
+              ? 'Looks only at what your next commit would record.'
+              : 'Looks through your files and every commit for tokens, keys and passwords.'
       }
       onClose={onClose}
       width="wide"
     >
       <div className="gs-modal-body gs-scan-body">
+        {!gate && (
+          <div className="gs-scan-tabs" role="tablist" aria-label="What to scan">
+            <button
+              role="tab"
+              aria-selected={mode === 'staged'}
+              className={`gs-button compact ${mode === 'staged' ? 'primary' : 'secondary'}`}
+              disabled={phase === 'scanning' || phase === 'removing'}
+              onClick={() => setMode('staged')}
+            >
+              Staged changes
+            </button>
+            <button
+              role="tab"
+              aria-selected={mode === 'full'}
+              className={`gs-button compact ${mode === 'full' ? 'primary' : 'secondary'}`}
+              disabled={phase === 'scanning' || phase === 'removing'}
+              onClick={() => setMode('full')}
+            >
+              Whole repository &amp; history
+            </button>
+          </div>
+        )}
+
         {phase === 'scanning' && (
           <div className="gs-scan-empty">
             <Loader2 className="gs-spin" size={22} />
-            <p>Scanning the working tree and every commit…</p>
+            <p>{mode === 'staged' ? 'Scanning what is staged…' : 'Scanning the working tree and every commit…'}</p>
           </div>
         )}
 
@@ -207,8 +282,9 @@ export function SecretScanModal({
                     : 'No credentials found'}
                 </strong>
                 <small>
-                  Scanned {scan.filesScanned} file{scan.filesScanned === 1 ? '' : 's'} and {scan.blobsScanned} version
-                  {scan.blobsScanned === 1 ? '' : 's'} in history
+                  {mode === 'staged'
+                    ? `Scanned ${scan.filesScanned} staged file${scan.filesScanned === 1 ? '' : 's'}`
+                    : `Scanned ${scan.filesScanned} file${scan.filesScanned === 1 ? '' : 's'} and ${scan.blobsScanned} version${scan.blobsScanned === 1 ? '' : 's'} in history`}
                   {scan.skipped.large + scan.skipped.binary > 0 &&
                     ` · skipped ${scan.skipped.large} too large, ${scan.skipped.binary} binary`}
                   {scan.truncated && ' · stopped early at the scan limit'}
@@ -241,7 +317,7 @@ export function SecretScanModal({
                             {f.path}:{f.line}
                           </span>
                           <span className={`gs-where ${f.where}`}>
-                            {f.where === 'worktree' ? 'working tree' : `history${f.commit ? ` · ${f.commit}` : ''}`}
+                            {whereLabel(f.where, f.commit)}
                           </span>
                         </label>
                       ))}
@@ -251,7 +327,8 @@ export function SecretScanModal({
               </>
             )}
 
-            {phase === 'results' && (
+            {/* The AI pass works off the full scan's candidate list. */}
+            {phase === 'results' && mode === 'full' && (
               <div className="gs-deep">
                 <div className="gs-deep-head">
                   <div>
@@ -318,7 +395,7 @@ export function SecretScanModal({
                             {f.kind && <em className="gs-ai-kind"> · {f.kind}</em>}
                           </span>
                           <span className={`gs-where ${f.where}`}>
-                            {f.where === 'worktree' ? 'working tree' : `history${f.commit ? ` · ${f.commit}` : ''}`}
+                            {whereLabel(f.where, f.commit)}
                           </span>
                         </label>
                       ))}
@@ -422,7 +499,41 @@ export function SecretScanModal({
       </div>
 
       <div className="gs-modal-footer">
-        {phase === 'results' && (findings.length > 0 || aiFindings.length > 0) && (
+        {/* Staged findings aren't in the history, so there is nothing to
+            rewrite: fix the file, or take it back out of the commit. */}
+        {phase === 'results' && mode === 'staged' && findings.length > 0 && (
+          <>
+            <button className="gs-button secondary" disabled={unstaging} onClick={() => void runScan()}>
+              Re-scan
+            </button>
+            <span className="flex-1" />
+            <button className="gs-button secondary" disabled={unstaging} onClick={onClose}>
+              {gate ? 'Cancel commit' : 'Close'}
+            </button>
+            <button
+              className="gs-button secondary"
+              disabled={!selected.size || unstaging}
+              onClick={() => void unstageFindings()}
+            >
+              {unstaging ? <Spinner size={14} /> : <FileWarning size={15} />} Unstage{' '}
+              {new Set(findings.filter((f) => selected.has(f.id)).map((f) => f.path)).size} file(s)
+            </button>
+            {gate && (
+              <button
+                className="gs-button danger"
+                disabled={unstaging}
+                onClick={() => {
+                  gate.onCommitAnyway();
+                  onClose();
+                }}
+              >
+                Commit anyway
+              </button>
+            )}
+          </>
+        )}
+
+        {phase === 'results' && mode === 'full' && (findings.length > 0 || aiFindings.length > 0) && (
           <>
             <button className="gs-button secondary" onClick={() => void runScan()}>
               Re-scan
@@ -458,9 +569,27 @@ export function SecretScanModal({
         {(phase === 'done' || (phase === 'results' && findings.length === 0 && aiFindings.length === 0)) && (
           <>
             <span className="flex-1" />
-            <button className="gs-button primary" onClick={onClose}>
-              Done
-            </button>
+            {/* Re-scanned during the gate and now clean: let the commit through. */}
+            {gate && phase === 'results' ? (
+              <>
+                <button className="gs-button secondary" onClick={onClose}>
+                  Cancel commit
+                </button>
+                <button
+                  className="gs-button primary"
+                  onClick={() => {
+                    gate.onCommitAnyway();
+                    onClose();
+                  }}
+                >
+                  Commit now
+                </button>
+              </>
+            ) : (
+              <button className="gs-button primary" onClick={onClose}>
+                Done
+              </button>
+            )}
           </>
         )}
       </div>

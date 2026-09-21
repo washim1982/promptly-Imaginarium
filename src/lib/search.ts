@@ -21,6 +21,11 @@ export async function webSearch(
   query: string,
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
+  // In the desktop app the main process owns search: it holds the Tavily key
+  // and calls out through Chromium's network stack, which works behind a
+  // corporate proxy. Only the browser build falls through to /api/search.
+  const { hasSearchBridge, searchApi } = await import('./websearch');
+  if (hasSearchBridge()) return searchApi.query(query, 12);
   // OrioSearch's Tavily-compatible API: POST a JSON body. It aggregates SearXNG's
   // default engine set (DuckDuckGo + others) and reranks for relevance. `basic`
   // depth returns snippets only (fast); no full-page extraction needed here.

@@ -2582,6 +2582,18 @@
   background: color-mix(in srgb, var(--gs-violet) 16%, transparent);
 }
 
+/* Staged: about to be committed — the one the pre-commit gate is built on. */
+.git-studio .gs-where.staged {
+  color: var(--gs-amber, #f2b544);
+  background: color-mix(in srgb, var(--gs-amber, #f2b544) 18%, transparent);
+}
+
+.git-studio .gs-scan-tabs {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
 .git-studio .gs-scan-confirm,
 .git-studio .gs-scan-done {
   display: flex;

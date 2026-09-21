@@ -9,7 +9,7 @@ export interface Finding {
   id: string;
   rule: string;
   ruleLabel: string;
-  where: 'worktree' | 'history';
+  where: 'worktree' | 'history' | 'staged';
   path: string;
   line: number;
   /** The value with its middle replaced by dots. */
@@ -82,6 +82,7 @@ interface GitBridge {
   openTerminal(repo: string): Promise<void>;
   openCreateRemote(repo: string): Promise<void>;
   scanSecrets(repo: string): Promise<ScanResult>;
+  scanStaged(repo: string): Promise<ScanResult>;
   scanCandidates(repo: string): Promise<CandidateResult>;
   removeSecrets(repo: string, findingIds: string[]): Promise<{ summary: RemovalSummary; state: RepoState }>;
   forcePush(repo: string, remote: string, branch: string): Promise<{ message: string; state: RepoState }>;

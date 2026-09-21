@@ -30,6 +30,8 @@ import { registerGitIpc } from './git/ipc';
 import { registerGoogleIpc } from './google/ipc';
 import { registerAuth0Ipc } from './auth0/ipc';
 import { registerAgentIpc } from './agent/ipc';
+import { registerSearchIpc } from './search/ipc';
+import { httpFetch } from './oauth/http';
 import { migrateLegacyUserData } from './migrateUserData';
 
 const SCHEME = 'app';
@@ -399,10 +401,11 @@ async function serveApi(url: URL, request: Request): Promise<Response> {
     return new Response('Not found', { status: 404, headers: ISOLATION_HEADERS });
   }
   try {
-    const upstream = await fetch(SEARCH_API + target, {
+    // net.fetch, so a remote ORIOSEARCH_URL still works behind a proxy.
+    const upstream = await httpFetch(SEARCH_API + target, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: await request.arrayBuffer(),
+      body: await request.text(),
     });
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
@@ -532,6 +535,7 @@ function registerIpc(): void {
   registerGitIpc();
   registerGoogleIpc();
   registerAuth0Ipc();
+  registerSearchIpc();
   registerAgentIpc();
 
   ipcMain.handle('app:info', () => ({

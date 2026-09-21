@@ -75,6 +75,7 @@ const git = {
   // Credential scan: find secrets in the working tree and the history, remove
   // the selected ones (rewriting history), then optionally force-push.
   scanSecrets: (repo: string) => ipcRenderer.invoke('git:scanSecrets', repo),
+  scanStaged: (repo: string) => ipcRenderer.invoke('git:scanStaged', repo),
   scanCandidates: (repo: string) => ipcRenderer.invoke('git:scanCandidates', repo),
   removeSecrets: (repo: string, findingIds: string[]) => ipcRenderer.invoke('git:removeSecrets', repo, findingIds),
   forcePush: (repo: string, remote: string, branch: string) => ipcRenderer.invoke('git:forcePush', repo, remote, branch),
@@ -154,6 +155,16 @@ const auth0 = {
   logout: () => ipcRenderer.invoke('auth0:logout'),
 };
 
+// Web search: a Tavily API key (Settings → Web search) or the self-hosted
+// backend. The key stays in main; only its masked form comes back here.
+const search = {
+  status: () => ipcRenderer.invoke('search:status'),
+  saveKey: (key: string) => ipcRenderer.invoke('search:saveKey', key),
+  clearKey: () => ipcRenderer.invoke('search:clearKey'),
+  verifyKey: (key: string) => ipcRenderer.invoke('search:verifyKey', key),
+  query: (query: string, maxResults?: number) => ipcRenderer.invoke('search:query', query, maxResults),
+};
+
 const bridge = {
   isDesktop: true as const,
 
@@ -205,6 +216,7 @@ const bridge = {
   agent,
   google,
   auth0,
+  search,
 };
 
 export type DesktopBridge = typeof bridge;

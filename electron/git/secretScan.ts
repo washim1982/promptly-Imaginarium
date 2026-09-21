@@ -84,7 +84,7 @@ export const SECRET_RULES: SecretRule[] = [
   },
 ];
 
-export type FindingWhere = 'worktree' | 'history';
+export type FindingWhere = 'worktree' | 'history' | 'staged';
 
 export interface Finding {
   id: string;
@@ -371,6 +371,59 @@ export async function scanRepository(root: string): Promise<ScanResult & { secre
     skipped: totals.skipped,
     truncated: totals.truncated,
     secretCount: distinct,
+    secrets,
+  };
+}
+
+/**
+ * Scan only what is staged — the content `git commit` is about to record.
+ *
+ * Reads each staged path out of the index (`git show :path`) rather than off
+ * disk: a file can be staged with a secret and then edited, and it is the
+ * staged version that would reach the history. Deletions have nothing to scan.
+ */
+export async function scanStaged(root: string): Promise<ScanResult & { secrets: Map<string, string> }> {
+  const secrets = new Map<string, string>();
+  const findings: Finding[] = [];
+  const skipped: SkippedCounts = { large: 0, binary: 0 };
+  let filesScanned = 0;
+  let truncated = false;
+
+  // ACMR: added, copied, modified, renamed — everything with staged content.
+  const staged = nul(await runGit(['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], root));
+  for (const rel of staged) {
+    if (skipPath(rel)) {
+      skipped.binary++;
+      continue;
+    }
+    const size = Number(
+      (await runGit(['cat-file', '-s', `:${rel}`], root).catch(() => '')).trim() || '0',
+    );
+    if (size > MAX_BLOB_BYTES) {
+      skipped.large++;
+      continue;
+    }
+    const content = await runGit(['show', `:${rel}`], root).catch(() => '');
+    if (!content) continue;
+    if (content.includes('\0')) {
+      skipped.binary++;
+      continue;
+    }
+    filesScanned++;
+    findings.push(...scanText(content, 'staged', rel, secrets));
+    if (findings.length >= MAX_FINDINGS) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return {
+    findings,
+    filesScanned,
+    blobsScanned: 0,
+    skipped,
+    truncated,
+    secretCount: new Set(secrets.values()).size,
     secrets,
   };
 }
