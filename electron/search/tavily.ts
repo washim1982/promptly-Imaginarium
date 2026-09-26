@@ -1,8 +1,6 @@
 // Web search for the chat and the agent's web_search tool.
 //
-// Two backends, in order: a Tavily API key the user pastes into Settings, or
-// the self-hosted OrioSearch at ORIOSEARCH_URL. Tavily is what makes search
-// work on a machine with nothing self-hosted.
+// Keenable is the default; a saved Tavily key enables automatic fallback.
 //
 // Everything goes through httpFetch (Electron's net.fetch — Chromium's network
 // stack), never Node's fetch: behind a corporate proxy or a TLS-inspecting
@@ -16,6 +14,7 @@ import { app, safeStorage } from 'electron';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { httpFetch } from '../oauth/http';
+import { normalizeResults, searchProviders } from './providers';
 
 export interface SearchResult {
   title: string;
@@ -23,11 +22,13 @@ export interface SearchResult {
   content: string;
 }
 
-export type SearchProvider = 'tavily' | 'oriosearch';
+export type SearchProvider = 'keenable' | 'tavily';
 
 export interface SearchStatus {
-  /** A usable backend exists (a Tavily key, or OrioSearch is configured). */
+  /** Keenable's public endpoint is available without configuration. */
   configured: boolean;
+  keenableSource: 'env' | 'saved' | null;
+  keenableMasked: string;
   provider: SearchProvider | null;
   /** Where the Tavily key came from, if there is one. */
   source: 'env' | 'saved' | null;
@@ -35,25 +36,32 @@ export interface SearchStatus {
   masked: string;
   /** False on a machine without DPAPI: the key then lives for this run only. */
   canPersist: boolean;
-  /** The OrioSearch base URL, shown as the fallback in Settings. */
+  /** Tavily fallback endpoint. */
   fallbackUrl: string;
 }
 
-const keyFile = () => path.join(app.getPath('userData'), 'search-key.bin');
+const keyFile = (provider: SearchProvider) => path.join(app.getPath('userData'), provider === 'keenable' ? 'keenable-key.bin' : 'search-key.bin');
+function checkProvider(provider: SearchProvider): void {
+  if (provider !== 'keenable' && provider !== 'tavily') throw new Error('Unknown search provider.');
+}
 
-const ORIOSEARCH_URL = process.env.ORIOSEARCH_URL ?? 'http://localhost:8005';
 const TAVILY_URL = 'https://api.tavily.com/search';
 
 /** Key held in memory when safeStorage can't persist it (no DPAPI). */
-let volatileKey: string | null = null;
+const volatileKeys: Partial<Record<SearchProvider, string>> = {};
 
 // ---- the key ---------------------------------------------------------------------------
 
 /** Tavily keys look like "tvly-…" or "tvly-dev-…". */
-export function validateKey(raw: unknown): string {
+export function validateKey(raw: unknown, provider: SearchProvider = 'tavily'): string {
+  checkProvider(provider);
   const key = String(raw ?? '').trim();
-  if (!key) throw new Error('Paste your Tavily API key.');
+  if (!key) throw new Error(`Paste your ${provider === 'keenable' ? 'Keenable' : 'Tavily'} API key.`);
   if (/\s/.test(key)) throw new Error('That looks like more than just the key — paste the key on its own.');
+  if (provider === 'keenable') {
+    if (key.length < 8 || key.length > 4096) throw new Error('Paste the complete Keenable API key from app.keenable.ai.');
+    return key;
+  }
   if (!/^tvly-[A-Za-z0-9_-]{8,}$/i.test(key)) {
     throw new Error('A Tavily key starts with "tvly-". Copy it from app.tavily.com → API Keys.');
   }
@@ -61,54 +69,59 @@ export function validateKey(raw: unknown): string {
 }
 
 export function maskKey(key: string): string {
-  return key.length <= 12 ? 'tvly-…' : `${key.slice(0, 9)}…${key.slice(-4)}`;
+  return key.length <= 12 ? '••••••••' : `${key.slice(0, 9)}…${key.slice(-4)}`;
 }
 
-async function loadKey(): Promise<{ key: string; source: 'env' | 'saved' } | null> {
-  const fromEnv = process.env.TAVILY_API_KEY?.trim();
+async function loadKey(provider: SearchProvider = 'tavily'): Promise<{ key: string; source: 'env' | 'saved' } | null> {
+  checkProvider(provider);
+  const fromEnv = (provider === 'keenable' ? process.env.KEENABLE_API_KEY : process.env.TAVILY_API_KEY)?.trim();
   if (fromEnv) {
     try {
-      return { key: validateKey(fromEnv), source: 'env' };
+      return { key: validateKey(fromEnv, provider), source: 'env' };
     } catch {
       /* a malformed env var shouldn't hide a good saved key */
     }
   }
-  if (volatileKey) return { key: volatileKey, source: 'saved' };
+  if (volatileKeys[provider]) return { key: volatileKeys[provider]!, source: 'saved' };
   try {
     if (!safeStorage.isEncryptionAvailable()) return null;
-    return { key: safeStorage.decryptString(await readFile(keyFile())), source: 'saved' };
+    return { key: safeStorage.decryptString(await readFile(keyFile(provider))), source: 'saved' };
   } catch {
     return null; // not set yet, or encrypted for a different Windows user
   }
 }
 
-export async function saveKey(raw: unknown): Promise<SearchStatus> {
-  const key = validateKey(raw);
+export async function saveKey(raw: unknown, provider: SearchProvider = 'tavily'): Promise<SearchStatus> {
+  const key = validateKey(raw, provider);
   if (safeStorage.isEncryptionAvailable()) {
     await mkdir(app.getPath('userData'), { recursive: true });
-    await writeFile(keyFile(), safeStorage.encryptString(key));
-    volatileKey = null;
+    await writeFile(keyFile(provider), safeStorage.encryptString(key));
+    delete volatileKeys[provider];
   } else {
-    volatileKey = key; // this run only — never plain text on disk
+    volatileKeys[provider] = key; // this run only — never plain text on disk
   }
   return status();
 }
 
-export async function clearKey(): Promise<SearchStatus> {
-  volatileKey = null;
-  await rm(keyFile(), { force: true });
+export async function clearKey(provider: SearchProvider = 'tavily'): Promise<SearchStatus> {
+  checkProvider(provider);
+  delete volatileKeys[provider];
+  await rm(keyFile(provider), { force: true });
   return status();
 }
 
 export async function status(): Promise<SearchStatus> {
   const loaded = await loadKey();
+  const keenable = await loadKey('keenable');
   return {
-    configured: Boolean(loaded) || Boolean(ORIOSEARCH_URL),
-    provider: loaded ? 'tavily' : ORIOSEARCH_URL ? 'oriosearch' : null,
+    keenableSource: keenable?.source ?? null,
+    keenableMasked: keenable ? maskKey(keenable.key) : '',
+    configured: true,
+    provider: 'keenable',
     source: loaded?.source ?? null,
     masked: loaded ? maskKey(loaded.key) : '',
     canPersist: safeStorage.isEncryptionAvailable(),
-    fallbackUrl: ORIOSEARCH_URL,
+    fallbackUrl: 'https://api.tavily.com/search',
   };
 }
 
@@ -153,36 +166,31 @@ async function searchTavily(key: string, query: string, maxResults: number): Pro
   return toResults(await res.json(), maxResults);
 }
 
-async function searchOrio(query: string, maxResults: number): Promise<SearchResult[]> {
-  const res = await httpFetch(`${ORIOSEARCH_URL}/search`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ query, search_depth: 'basic', topic: 'general', max_results: maxResults }),
-    timeoutMs: 20_000,
-  });
-  if (!res.ok) throw new Error(`Search backend at ${ORIOSEARCH_URL} returned HTTP ${res.status}.`);
-  return toResults(await res.json(), maxResults);
-}
-
-/** Tavily when a key is set, otherwise the self-hosted backend. */
+/** Keenable first, with the existing encrypted Tavily key as fallback. */
 export async function search(query: string, maxResults = 8): Promise<SearchResult[]> {
   const q = String(query ?? '').trim();
   if (!q) throw new Error('Enter something to search for.');
   const limit = Math.min(Math.max(1, Math.floor(maxResults) || 8), 12);
   const loaded = await loadKey();
-  if (loaded) return searchTavily(loaded.key, q, limit);
-  try {
-    return await searchOrio(q, limit);
-  } catch (err) {
-    throw new Error(
-      `No web search is set up. Add a Tavily API key in Settings → Web search. (Local backend: ${(err as Error).message})`,
-    );
-  }
+  const keenable = await loadKey('keenable');
+  return searchProviders(httpFetch, q, limit, keenable?.key, loaded?.key);
 }
 
 /** Settings' "Test key": confirm a key works before saving it. */
-export async function verifyKey(raw: unknown): Promise<{ ok: true; sample: string }> {
-  const key = validateKey(raw);
+export async function verifyKey(raw: unknown, provider: SearchProvider = 'tavily'): Promise<{ ok: true; sample: string }> {
+  checkProvider(provider);
+  const key = String(raw ?? '').trim() ? validateKey(raw, provider) : (await loadKey(provider))?.key;
+  if (!key) throw new Error('Add a key before testing.');
+  if (provider === 'keenable') {
+    // Test only the authenticated endpoint: fallback must never hide a rejected key.
+    const res = await httpFetch('https://api.keenable.ai/v1/search', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
+      body: JSON.stringify({ query: 'family travel', max_results: 1 }), timeoutMs: 20_000, retries: 0,
+    });
+    if (!res.ok) throw new Error(`Keenable key test failed (HTTP ${res.status}). Check the key and account limits.`);
+    const results = normalizeResults(await res.json(), 1);
+    return { ok: true, sample: results[0]?.url ?? 'Key accepted; no results.' };
+  }
   const results = await searchTavily(key, 'what day is it today', 1);
   return { ok: true, sample: results[0]?.url ?? 'no results, but the key was accepted' };
 }

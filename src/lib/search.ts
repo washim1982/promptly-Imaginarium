@@ -25,7 +25,15 @@ export async function webSearch(
   // and calls out through Chromium's network stack, which works behind a
   // corporate proxy. Only the browser build falls through to /api/search.
   const { hasSearchBridge, searchApi } = await import('./websearch');
-  if (hasSearchBridge()) return searchApi.query(query, 12);
+  if (hasSearchBridge()) {
+    signal?.throwIfAborted();
+    if (!signal) return searchApi.query(query, 12);
+    return new Promise<SearchResult[]>((resolve, reject) => {
+      const abort = () => reject(new DOMException('Search cancelled.', 'AbortError'));
+      signal.addEventListener('abort', abort, { once: true });
+      searchApi.query(query, 12).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    });
+  }
   // OrioSearch's Tavily-compatible API: POST a JSON body. It aggregates SearXNG's
   // default engine set (DuckDuckGo + others) and reranks for relevance. `basic`
   // depth returns snippets only (fast); no full-page extraction needed here.
@@ -108,7 +116,7 @@ export function formatSearchForChat(
     (r, i) =>
       `[${i + 1}] ${r.title} — ${domainOf(r.url)}\n    ${r.url}\n    ${r.content}`,
   );
-  return `Web search results for the user's question "${query}" (via OrioSearch). Use them to answer accurately and with current information. Cite sources inline as [n] matching the list below, and finish with a "Sources" section listing the [n] URLs you actually used. If the results don't cover the question, say so briefly and answer from your own knowledge.
+  return `Web search results for the user's question "${query}". Use them to answer accurately and with current information. Cite sources inline as [n] matching the list below, and finish with a "Sources" section listing the [n] URLs you actually used. If the results don't cover the question, say so briefly and answer from your own knowledge.
 
 Web results:
 ${lines.join('\n\n')}
@@ -127,5 +135,5 @@ export function formatSearchForPrompt(
     (r, i) =>
       `[${i + 1}] ${r.title} — ${domainOf(r.url)}\n    ${r.url}\n    ${r.content}`,
   );
-  return `NEW web sources${focus ? ` (focus: ${focus})` : ''}, via OrioSearch — not seen in earlier iterations:\n${lines.join('\n\n')}`;
+  return `NEW web sources${focus ? ` (focus: ${focus})` : ''} — not seen in earlier iterations:\n${lines.join('\n\n')}`;
 }

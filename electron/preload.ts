@@ -159,9 +159,9 @@ const auth0 = {
 // backend. The key stays in main; only its masked form comes back here.
 const search = {
   status: () => ipcRenderer.invoke('search:status'),
-  saveKey: (key: string) => ipcRenderer.invoke('search:saveKey', key),
-  clearKey: () => ipcRenderer.invoke('search:clearKey'),
-  verifyKey: (key: string) => ipcRenderer.invoke('search:verifyKey', key),
+  saveKey: (key: string, provider?: 'keenable' | 'tavily') => ipcRenderer.invoke('search:saveKey', key, provider),
+  clearKey: (provider?: 'keenable' | 'tavily') => ipcRenderer.invoke('search:clearKey', provider),
+  verifyKey: (key: string, provider?: 'keenable' | 'tavily') => ipcRenderer.invoke('search:verifyKey', key, provider),
   query: (query: string, maxResults?: number) => ipcRenderer.invoke('search:query', query, maxResults),
 };
 

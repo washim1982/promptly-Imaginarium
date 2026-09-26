@@ -7,7 +7,7 @@ import Chat from './components/chat/Chat';
 import SettingsPanel from './components/SettingsPanel';
 import About from './routes/About';
 import Privacy from './routes/Privacy';
-import Research from './routes/Research';
+import Planning from './routes/Planning';
 
 // pdf.js is heavy; only load it when the PDF Tools route is visited.
 const PdfTools = lazy(() => import('./routes/PdfTools'));
@@ -40,7 +40,8 @@ export default function App() {
                 build's marketing landing page has no audience here. */}
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<Chat />} />
-            <Route path="/research" element={<Research />} />
+            <Route path="/planning" element={<Planning />} />
+            <Route path="/research" element={<Navigate to="/planning" replace />} />
             <Route path="/pdf" element={<PdfTools />} />
             <Route path="/svn" element={<SvnStudio />} />
             <Route path="/git" element={<GitStudio />} />

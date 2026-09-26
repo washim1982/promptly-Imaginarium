@@ -2,7 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 
 const LINKS = [
   { to: '/chat', label: 'Chat' },
-  { to: '/research', label: 'Research' },
+  { to: '/planning', label: 'Planning' },
   { to: '/pdf', label: 'PDF Tools' },
   { to: '/svn', label: 'SVN Studio' },
   { to: '/git', label: 'Git Studio' },

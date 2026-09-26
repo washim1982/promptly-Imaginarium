@@ -31,6 +31,7 @@ import { registerGoogleIpc } from './google/ipc';
 import { registerAuth0Ipc } from './auth0/ipc';
 import { registerAgentIpc } from './agent/ipc';
 import { registerSearchIpc } from './search/ipc';
+import { search as searchWeb } from './search/tavily';
 import { httpFetch } from './oauth/http';
 import { migrateLegacyUserData } from './migrateUserData';
 
@@ -401,6 +402,12 @@ async function serveApi(url: URL, request: Request): Promise<Response> {
     return new Response('Not found', { status: 404, headers: ISOLATION_HEADERS });
   }
   try {
+    if (url.pathname === '/api/search') {
+      const { query, max_results } = await request.json();
+      return new Response(JSON.stringify({ results: await searchWeb(query, max_results) }), {
+        headers: { 'content-type': 'application/json', ...ISOLATION_HEADERS },
+      });
+    }
     // net.fetch, so a remote ORIOSEARCH_URL still works behind a proxy.
     const upstream = await httpFetch(SEARCH_API + target, {
       method: 'POST',

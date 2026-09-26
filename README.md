@@ -2,8 +2,34 @@
 
 A native Windows build of the OMNI-STUDIO AI workspace (formerly Imaginarium). Same interface as the web
 app, same inference: **any LiteRT-LM `.litertlm` model** running entirely on your
-GPU through **LiteRT-LM + WebGPU**. No inference server, no account, nothing
-leaves the machine.
+GPU through **LiteRT-LM + WebGPU**. Model inference stays on your machine.
+Optional web search sends queries to the search providers described below.
+
+## Planning and web search
+
+The Planning tab replaces Research (old Research links redirect to Planning).
+Create family travel, weekend, celebration or routine plans with dates, budgets,
+preferences, optional online sources, and Google Maps links. A loaded local model
+is required to generate a plan. Save the result as Markdown, export an all-day
+calendar event as `.ics`, or open a Google Calendar event draft for review.
+Calendar availability is not read; enter existing commitments in the notes.
+Calendar export creates one event for the complete date range, not individual activities.
+
+Search uses [Keenable's API](https://docs.keenable.ai/api-reference/search) by
+default, without requiring an account. Add, test or remove your Keenable key in
+Settings → Web search, or set `KEENABLE_API_KEY` in the main/server environment
+for authenticated access. Environment keys take precedence over saved keys.
+A Tavily key saved in Settings → Web search
+(or `TAVILY_API_KEY`) enables automatic fallback on failures or empty results.
+Keys stay in the main/server process; saved Keenable and Tavily keys use separate
+encrypted storage. Removing the Keenable key restores keyless access.
+Planning searches send the title, location and start date, excluding family details
+and private notes. External Maps and Calendar actions send the selected details
+to Google when opened.
+
+The Vite development server implements the same search order. A standalone hosted
+browser build needs a server-side `/api/search` endpoint; never embed API keys in
+the browser bundle. Run `node scripts/test-planning-search.mjs` for targeted checks.
 
 Ported from the browser build at `../workspace/Projects/Promptly`.
 

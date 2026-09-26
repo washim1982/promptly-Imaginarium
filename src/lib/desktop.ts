@@ -54,7 +54,9 @@ export function requireDesktop(): DesktopBridge {
 
 /** Open an http(s) link in the OS browser rather than inside the app window. */
 export function openExternal(url: string): void {
-  void desktop?.openExternal(url).catch(() => {});
+  if (!/^https?:\/\//i.test(url)) return;
+  if (desktop) void desktop.openExternal(url).catch(() => {});
+  else window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 // Electron wraps anything thrown in an ipcMain handler as
