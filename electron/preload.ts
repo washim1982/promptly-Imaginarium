@@ -76,8 +76,8 @@ const git = {
   // the selected ones (rewriting history), then optionally force-push.
   scanSecrets: (repo: string) => ipcRenderer.invoke('git:scanSecrets', repo),
   scanStaged: (repo: string) => ipcRenderer.invoke('git:scanStaged', repo),
-  scanCandidates: (repo: string) => ipcRenderer.invoke('git:scanCandidates', repo),
-  removeSecrets: (repo: string, findingIds: string[]) => ipcRenderer.invoke('git:removeSecrets', repo, findingIds),
+  scanCandidates: (repo: string, scanId?: string) => ipcRenderer.invoke('git:scanCandidates', repo, scanId),
+  removeSecrets: (repo: string, findingIds: string[], scanId?: string) => ipcRenderer.invoke('git:removeSecrets', repo, findingIds, scanId),
   forcePush: (repo: string, remote: string, branch: string) => ipcRenderer.invoke('git:forcePush', repo, remote, branch),
 };
 

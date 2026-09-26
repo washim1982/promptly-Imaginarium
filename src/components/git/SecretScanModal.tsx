@@ -81,6 +81,7 @@ export function SecretScanModal({
   const latest = useRef(llm);
   latest.current = llm;
   const [deep, setDeep] = useState<DeepState>({ phase: 'idle' });
+  const deepBusy = deep.phase === 'collecting' || deep.phase === 'loading-model' || deep.phase === 'asking';
   const [aiFindings, setAiFindings] = useState<AiFinding[]>([]);
   const deepModel = findReviewModel(llm.models);
 
@@ -88,7 +89,7 @@ export function SecretScanModal({
     setAiFindings([]);
     setDeep({ phase: 'collecting' });
     try {
-      const { candidates, linesConsidered } = await gitApi.scanCandidates(repo.root);
+      const { candidates, linesConsidered } = await gitApi.scanCandidates(repo.root, scan?.scanId);
       if (!candidates.length) {
         setDeep({ phase: 'done', considered: linesConsidered, asked: 0 });
         return;
@@ -133,21 +134,32 @@ export function SecretScanModal({
       }
       setDeep({ phase: 'done', considered: linesConsidered, asked: candidates.length });
     } catch (err) {
+      if (errorMessage(err).includes('SCAN_EXPIRED:')) {
+        await runScan(false);
+        setError('The previous scan expired. Review the refreshed findings and select what to remove.');
+        return;
+      }
       setDeep({ phase: 'error', message: errorMessage(err) });
     }
   };
 
-  const runScan = useCallback(async () => {
+  const scanRequest = useRef(0);
+  const runScan = useCallback(async (selectAll = true) => {
+    const request = ++scanRequest.current;
+    setScan(null);
+    setSelected(new Set());
     setPhase('scanning');
     setError('');
     setAiFindings([]);
     setDeep({ phase: 'idle' });
     try {
       const result = mode === 'staged' ? await gitApi.scanStaged(repo.root) : await gitApi.scanSecrets(repo.root);
+      if (request !== scanRequest.current) return;
       setScan(result);
-      setSelected(new Set(result.findings.map((f) => f.id)));
+      setSelected(new Set(selectAll ? result.findings.map((f) => f.id) : []));
       setPhase('results');
     } catch (err) {
+      if (request !== scanRequest.current) return;
       setError(errorMessage(err));
       setPhase('results');
     }
@@ -161,6 +173,7 @@ export function SecretScanModal({
       return;
     }
     void runScan();
+    return () => { scanRequest.current++; };
   }, [runScan]);
 
   /** Staged mode's fix: take the offending files back out of the commit. */
@@ -184,13 +197,19 @@ export function SecretScanModal({
     setPhase('removing');
     setError('');
     try {
-      const { summary: result, state } = await gitApi.removeSecrets(repo.root, [...selected]);
+      const { summary: result, state, warning } = await gitApi.removeSecrets(repo.root, [...selected], scan?.scanId);
       setSummary(result);
-      onState(state);
+      if (state) onState(state);
+      if (warning) onNotify('error', warning);
       setPhase('done');
     } catch (err) {
-      setError(errorMessage(err));
-      setPhase('results');
+      if (errorMessage(err).includes('SCAN_EXPIRED:')) {
+        await runScan(false);
+        setError('The previous scan expired. Review the refreshed findings and select what to remove.');
+      } else {
+        setError(errorMessage(err));
+        setPhase('results');
+      }
     }
   };
 
@@ -240,7 +259,7 @@ export function SecretScanModal({
               role="tab"
               aria-selected={mode === 'staged'}
               className={`gs-button compact ${mode === 'staged' ? 'primary' : 'secondary'}`}
-              disabled={phase === 'scanning' || phase === 'removing'}
+              disabled={phase === 'scanning' || phase === 'removing' || deepBusy}
               onClick={() => setMode('staged')}
             >
               Staged changes
@@ -249,7 +268,7 @@ export function SecretScanModal({
               role="tab"
               aria-selected={mode === 'full'}
               className={`gs-button compact ${mode === 'full' ? 'primary' : 'secondary'}`}
-              disabled={phase === 'scanning' || phase === 'removing'}
+              disabled={phase === 'scanning' || phase === 'removing' || deepBusy}
               onClick={() => setMode('full')}
             >
               Whole repository &amp; history
@@ -535,14 +554,14 @@ export function SecretScanModal({
 
         {phase === 'results' && mode === 'full' && (findings.length > 0 || aiFindings.length > 0) && (
           <>
-            <button className="gs-button secondary" onClick={() => void runScan()}>
+            <button className="gs-button secondary" disabled={deepBusy} onClick={() => void runScan()}>
               Re-scan
             </button>
             <span className="flex-1" />
             <button className="gs-button secondary" onClick={onClose}>
               Close
             </button>
-            <button className="gs-button danger" disabled={!selected.size} onClick={() => setPhase('confirm')}>
+            <button className="gs-button danger" disabled={!selected.size || deepBusy} onClick={() => setPhase('confirm')}>
               <Trash2 size={15} /> Remove {selected.size} selected…
             </button>
           </>

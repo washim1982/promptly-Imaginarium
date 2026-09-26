@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } f
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import * as git from './gitService';
 import { scanRepository, scanStaged, collectCandidates } from './secretScan';
 import { removeSecrets, forcePush } from './historyRewrite';
@@ -16,7 +17,15 @@ const MAX_RECENT = 20;
 const windowOf = (e: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)!;
 
 /** Literal secret values from the last scan, kept out of the renderer. */
-let lastScan: { root: string; secrets: Map<string, string> } | null = null;
+const scans = new Map<string, { root: string; secrets: Map<string, string> }>();
+const rootKey = (root: string) => process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
+function requireScan(root: string, scanId: string) {
+  const scan = scans.get(scanId);
+  if (!scan || rootKey(scan.root) !== rootKey(root)) {
+    throw new Error('SCAN_EXPIRED: These results have expired. Scan again and review the new findings.');
+  }
+  return scan;
+}
 
 function recentFile(): string {
   return path.join(app.getPath('userData'), 'git-recent-repositories.json');
@@ -148,12 +157,15 @@ export function registerGitIpc(): void {
   ipcMain.handle('git:scanSecrets', async (_e, repo: string) => {
     const root = await git.resolveRepoRoot(repo);
     const { secrets, ...result } = await scanRepository(root);
-    lastScan = { root, secrets };
-    return result;
+    const scanId = randomUUID();
+    scans.set(scanId, { root, secrets });
+    // Bound retained credential data while keeping concurrent dialogs independent.
+    if (scans.size > 8) scans.delete(scans.keys().next().value!);
+    return { ...result, scanId };
   });
 
   // Staged-only scan, for the check before a commit. Deliberately does not
-  // touch `lastScan`: these values are not in the history yet, so they must
+  // touch full-scan sessions: these values are not in the history yet, so they must
   // never be handed to removeSecrets, which rewrites commits.
   ipcMain.handle('git:scanStaged', async (_e, repo: string) => {
     const root = await git.resolveRepoRoot(repo);
@@ -163,26 +175,34 @@ export function registerGitIpc(): void {
 
   // Deep scan: lines the rules didn't match, for the local model to judge. The
   // renderer needs the text itself here — the model runs in the renderer.
-  ipcMain.handle('git:scanCandidates', async (_e, repo: string) => {
+  ipcMain.handle('git:scanCandidates', async (_e, repo: string, scanId: string) => {
     const root = await git.resolveRepoRoot(repo);
-    if (!lastScan || lastScan.root !== root) throw new Error('Run the scan first.');
-    const known = new Set(lastScan.secrets.values());
+    const scan = requireScan(root, scanId);
+    const known = new Set(scan.secrets.values());
     const result = await collectCandidates(root, known);
     // Remember each candidate's value so a confirmed one can be removed by id.
-    for (const c of result.candidates) lastScan.secrets.set(c.id, c.value);
+    requireScan(root, scanId);
+    for (const c of result.candidates) scan.secrets.set(c.id, c.value);
     return result;
   });
 
-  ipcMain.handle('git:removeSecrets', async (_e, repo: string, findingIds: string[]) => {
+  ipcMain.handle('git:removeSecrets', async (_e, repo: string, findingIds: string[], scanId: string) => {
     const root = await git.resolveRepoRoot(repo);
-    if (!lastScan || lastScan.root !== root) throw new Error('Scan the repository again before removing anything.');
-    const values = (Array.isArray(findingIds) ? findingIds : [])
-      .map((id) => lastScan!.secrets.get(String(id)))
-      .filter((v): v is string => Boolean(v));
+    const scan = requireScan(root, scanId);
+    const ids = Array.isArray(findingIds) ? findingIds : [];
+    if (ids.some(id => !scan.secrets.has(String(id)))) throw new Error('SCAN_EXPIRED: Selected findings are no longer available. Scan again.');
+    const values = ids.map(id => scan.secrets.get(String(id))!);
     if (!values.length) throw new Error('Select at least one finding to remove.');
+    // Invalidate every snapshot of this repository before mutation, including
+    // duplicate submissions. A failed rewrite must be rescanned too.
+    for (const [id, entry] of scans) if (rootKey(entry.root) === rootKey(root)) scans.delete(id);
     const summary = await removeSecrets(root, values);
-    lastScan = null; // the ids refer to blobs that no longer exist
-    return { summary, state: await git.getRepoState(root) };
+    try {
+      return { summary, state: await git.getRepoState(root) };
+    } catch {
+      // A refresh failure must not turn a successful rewrite into a failed action.
+      return { summary, state: null, warning: 'Removal completed, but the repository view could not refresh. Reopen the repository to refresh it.' };
+    }
   });
 
   ipcMain.handle('git:forcePush', async (_e, repo: string, remote: string, branch: string) => {

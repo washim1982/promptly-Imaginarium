@@ -19,6 +19,7 @@ export interface Finding {
 }
 
 export interface ScanResult {
+  scanId?: string;
   findings: Finding[];
   filesScanned: number;
   blobsScanned: number;
@@ -83,8 +84,8 @@ interface GitBridge {
   openCreateRemote(repo: string): Promise<void>;
   scanSecrets(repo: string): Promise<ScanResult>;
   scanStaged(repo: string): Promise<ScanResult>;
-  scanCandidates(repo: string): Promise<CandidateResult>;
-  removeSecrets(repo: string, findingIds: string[]): Promise<{ summary: RemovalSummary; state: RepoState }>;
+  scanCandidates(repo: string, scanId?: string): Promise<CandidateResult>;
+  removeSecrets(repo: string, findingIds: string[], scanId?: string): Promise<{ summary: RemovalSummary; state: RepoState | null; warning?: string }>;
   forcePush(repo: string, remote: string, branch: string): Promise<{ message: string; state: RepoState }>;
 }
 
