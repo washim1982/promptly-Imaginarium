@@ -1,5 +1,3 @@
-// WebGPU capability detection. LiteRT-LM's JS runtime requires WebGPU; there is
-// no WASM/CPU fallback in the current preview, so we gate the whole app on this.
 
 export interface GpuSupport {
   supported: boolean;
@@ -25,7 +23,6 @@ export async function detectWebGPU(): Promise<GpuSupport> {
           'No compatible GPU adapter was found. Your hardware or driver may not support WebGPU.',
       };
     }
-    // `info` is the modern API; `requestAdapterInfo` is the older fallback.
     const info =
       (adapter as any).info ??
       ((adapter as any).requestAdapterInfo

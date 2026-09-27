@@ -5,7 +5,6 @@ import { IconPlus, IconSend } from './icons';
 
 type ScopeItem = { kind: 'file' | 'folder' | 'changes'; path: string };
 
-/** Whether the pinned review model is loaded, loadable, or absent. */
 export type ReviewModelState = 'ready' | 'will-load' | 'missing';
 
 interface AiAssistBoxProps {
@@ -37,8 +36,6 @@ export function AiAssistBox({
 }: AiAssistBoxProps) {
   const [question, setQuestion] = useState('');
   const [manual, setManual] = useState<ScopeItem[]>([]);
-  // The open file is in scope by default; this remembers if the user removed it
-  // for *that* file, so opening a different file brings the default back.
   const [autoRemovedFor, setAutoRemovedFor] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);

@@ -20,7 +20,6 @@ export default function PdfTools() {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ---- Gates -------------------------------------------------------------
   if (status === 'checking-gpu') {
     return (
       <Wrap>
@@ -44,7 +43,6 @@ export default function PdfTools() {
     );
   }
 
-  // ---- Handlers ----------------------------------------------------------
   async function onFile(file: File) {
     setParseError(null);
     setOutput('');
@@ -53,10 +51,8 @@ export default function PdfTools() {
     setPhase('parsing');
     setParseProgress([0, 0]);
     try {
-      // 1. Try the embedded text layer (fast).
       let result = await extractPdfText(file, (p, t) => setParseProgress([p, t]));
 
-      // 2. No text layer -> scanned/image PDF -> OCR fallback.
       if (!result.text.trim()) {
         setOcrUsed(true);
         setPhase('ocr');
@@ -112,7 +108,6 @@ export default function PdfTools() {
     );
   }
 
-  // ---- UI ----------------------------------------------------------------
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col gap-4 overflow-y-auto px-4 py-6">
       <div>
@@ -123,7 +118,7 @@ export default function PdfTools() {
         </p>
       </div>
 
-      {/* Upload / document card */}
+      {}
       {phase !== 'ready' ? (
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -207,7 +202,7 @@ export default function PdfTools() {
         </p>
       )}
 
-      {/* Actions */}
+      {}
       {phase === 'ready' && (
         <>
           <div className="flex flex-wrap gap-2">

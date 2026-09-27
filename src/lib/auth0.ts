@@ -1,5 +1,3 @@
-// Renderer side of the optional Auth0 app login (electron/auth0/). Profile
-// only — tokens never reach this side.
 
 import { cleanError, requireDesktop } from './desktop';
 
@@ -14,7 +12,6 @@ export interface Auth0Status {
   configured: boolean;
   clientSource: 'env' | 'saved' | null;
   domain: string;
-  /** The URL to put in the Auth0 application's Allowed Callback URLs. */
   callbackUrl: string;
   loggedIn: boolean;
   user: Auth0User | null;

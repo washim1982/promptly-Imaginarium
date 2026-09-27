@@ -66,9 +66,9 @@ import {
 export type EngineStatus =
   | 'checking-gpu'
   | 'unsupported'
-  | 'idle' // GPU ok, no model loaded
-  | 'downloading' // fetching from Hugging Face into userData
-  | 'reading' // streaming the local .litertlm off disk into the engine
+  | 'idle'
+  | 'downloading'
+  | 'reading'
   | 'initializing'
   | 'ready'
   | 'error';
@@ -79,18 +79,10 @@ export interface ChatMessage {
   text: string;
   createdAt: number;
   streaming?: boolean;
-  // Web-search-grounded replies: true while the search is running, plus the
-  // sources the answer was grounded in (shown under the message).
   searching?: boolean;
   sources?: SearchResult[];
-  /** Agent-mode replies: tool steps and prose, in order. */
   agent?: AgentView;
-  /** User messages: emails / Drive files / workspace files sent with it. */
   attachments?: AttachmentMeta[];
-  /**
-   * What the model actually received, when it differs from `text` (the
-   * attachments' contents, wrapped as untrusted data). Used to reseed the model.
-   */
   modelText?: string;
 }
 
@@ -100,11 +92,8 @@ export interface Workspace {
 }
 
 export type ModelSource =
-  /** Load a model already in the library (defaults to the active one). */
   | { type: 'library'; id?: string }
-  /** Open the native picker, add whatever is chosen, then load the first one. */
   | { type: 'add' }
-  /** Download a suggested model, add it to the library, then load it. */
   | { type: 'download'; suggestion: ModelSuggestion };
 
 interface LlmState {
@@ -112,12 +101,9 @@ interface LlmState {
   status: EngineStatus;
   error: string | null;
   progress: LoadProgress | null;
-  /** Every .litertlm the user has added, most-recently-used first. */
   models: ModelEntry[];
   activeModelId: string | null;
-  /** The library entry currently selected, if any. */
   activeModel: ModelEntry | null;
-  /** Files rejected by the last add, so the UI can explain why. */
   rejected: AddResult['rejected'];
   settings: EngineConfig;
   chatWidth: ChatWidth;
@@ -125,20 +111,14 @@ interface LlmState {
   customGlow: string | null;
   messages: ChatMessage[];
   isGenerating: boolean;
-  /** Agent mode: the model can call tools in a multi-round loop. */
   agentEnabled: boolean;
-  /** Plain chat searches the web by itself when a question needs live data. */
   autoWebSearch: boolean;
-  /** Folder the agent's file tools are confined to. */
   workspace: Workspace | null;
-  /** Items from the sidebar waiting to go out with the next message. */
   attachments: ChatAttachment[];
   addAttachment: (a: Omit<ChatAttachment, 'id'>) => void;
   removeAttachment: (id: string) => void;
-  // history
   conversations: ConversationMeta[];
   activeConversationId: string | null;
-  // actions
   setChatWidth: (w: ChatWidth) => void;
   setTheme: (id: string) => void;
   setCustomGlow: (hex: string | null) => void;
@@ -147,23 +127,16 @@ interface LlmState {
   setAutoWebSearch: (on: boolean) => void;
   pickWorkspace: () => Promise<void>;
   clearWorkspace: () => Promise<void>;
-  /** Answer an agent step waiting for approval. */
   resolveApproval: (stepId: string, approved: boolean) => void;
-  /** Resolves true once the model is ready, false if it failed or was cancelled. */
   loadModel: (source: ModelSource) => Promise<boolean>;
-  /** Open the native picker and add the chosen .litertlm files to the library. */
   addModels: () => Promise<AddResult>;
-  /** Remove from the library. Downloaded copies are deleted; user files are not. */
   removeModel: (id: string) => Promise<void>;
   renameModel: (id: string, label: string) => Promise<void>;
   dismissRejected: () => void;
   updateSettings: (next: Partial<EngineConfig>) => Promise<void>;
-  /** Sends `text` plus any pending attachments. */
   send: (text: string) => Promise<void>;
-  /** One-shot streaming generation in an isolated conversation (for tools). */
   generate: (prompt: string, systemPrompt?: string) => AsyncGenerator<string>;
   cancel: () => void;
-  // history actions
   newChat: () => void;
   loadConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
@@ -172,9 +145,6 @@ interface LlmState {
   importHistory: (file: File) => Promise<void>;
 }
 
-// Gemma's reference sampling settings are temperature 1.0 / top-K 64 /
-// top-P 0.95. Nudged slightly cooler for an assistant, but K and P are left at
-// the reference values — they are what keep the sampler out of greedy mode.
 const DEFAULT_SETTINGS: EngineConfig = {
   temperature: 0.75,
   topK: 64,
@@ -191,7 +161,6 @@ const THEME_KEY = 'imaginarium.theme';
 const GLOW_KEY = 'imaginarium.customGlow';
 const AGENT_KEY = 'imaginarium.agent';
 const AUTO_SEARCH_KEY = 'imaginarium.autoWebSearch';
-// Replaced by the agent's web_search tool; cleared so a saved "on" can't linger.
 localStorage.removeItem('imaginarium.webSearch');
 
 const READ_TOOLS = new Set(TOOL_SPECS.filter((t) => t.readsPrivateData).map((t) => t.name));
@@ -205,7 +174,6 @@ function loadSettings(): EngineConfig {
   }
 }
 
-// Completed (non-streaming, non-empty) turns to seed the model on resume.
 function messagesToTurns(msgs: ChatMessage[]): HistoryTurn[] {
   return msgs
     .filter((m) => m.text.trim())
@@ -245,7 +213,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const [agentEnabled, setAgentEnabledState] = useState<boolean>(
     localStorage.getItem(AGENT_KEY) === '1',
   );
-  // On by default: a local model has no way to know its knowledge is stale.
   const [autoWebSearch, setAutoWebSearchState] = useState<boolean>(
     localStorage.getItem(AUTO_SEARCH_KEY) !== '0',
   );
@@ -257,17 +224,13 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   );
 
   const engineRef = useRef<LlmEngine | null>(null);
-  // Agent turn in flight: its abort handle, and approvals the user hasn't answered.
   const agentAbortRef = useRef<AbortController | null>(null);
   const approvalsRef = useRef(new Map<string, (approved: boolean) => void>());
-  // Per-conversation agent state: compacted earlier turns, and whether workspace
-  // files have been read into it (the taint gate for network tools).
   const agentContextRef = useRef<AgentContextState | undefined>(undefined);
   const taintRef = useRef<TaintState>({ privateDataRead: false });
   const messagesRef = useRef<ChatMessage[]>([]);
   const activeIdRef = useRef<string | null>(null);
 
-  // Keep refs in sync so async callbacks read current values.
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
@@ -279,16 +242,13 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     try {
       setConversations(await listConversations());
     } catch {
-      /* IndexedDB unavailable (e.g. private mode) — history just won't persist */
     }
   }, []);
 
-  // Load the saved conversation list on startup.
   useEffect(() => {
     refreshConversations();
   }, [refreshConversations]);
 
-  // Gate the app on WebGPU at startup.
   useEffect(() => {
     let active = true;
     detectWebGPU().then((support) => {
@@ -301,7 +261,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Persist settings & model selection.
   useEffect(() => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   }, [settings]);
@@ -319,14 +278,11 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTO_SEARCH_KEY, autoWebSearch ? '1' : '0');
   }, [autoWebSearch]);
 
-  // The workspace lives in the main process; read it once on startup.
   useEffect(() => {
     const bridge = (desktop as unknown as { agent?: { getWorkspace(): Promise<Workspace | null> } })?.agent;
     void bridge?.getWorkspace().then(setWorkspace).catch(() => setWorkspace(null));
   }, []);
 
-  // Apply the visual theme: override --color-neon (and derive the soft variant)
-  // on :root so glows, accents, and the ambient gradient all follow.
   useEffect(() => {
     const accent = resolveAccent(theme, customGlow);
     const root = document.documentElement;
@@ -340,7 +296,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     else localStorage.removeItem(GLOW_KEY);
   }, [theme, customGlow]);
 
-  // Dispose engine on unmount / page unload.
   useEffect(() => {
     const onUnload = () => engineRef.current?.dispose();
     window.addEventListener('beforeunload', onUnload);
@@ -350,11 +305,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  /**
-   * Re-read the library from the main process. It prunes entries whose files
-   * have been moved or deleted, so this also keeps the active selection honest:
-   * if the active model vanished, fall back to the first one left.
-   */
   const refreshModels = useCallback(async (): Promise<ModelEntry[]> => {
     const list = sortModels(await listModels());
     setModels(list);
@@ -374,7 +324,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     setRejected(result.rejected);
     if (result.added.length) {
       await refreshModels();
-      // Select what was just added — it's almost certainly what the user wants.
       setActiveModelId(result.added[0].id);
     }
     return result;
@@ -383,7 +332,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const removeModel = useCallback(
     async (id: string) => {
       await dropModel(id);
-      // Unload the engine if the model backing it just left the library.
       if (id === activeModelId && status === 'ready') {
         await engineRef.current?.dispose();
         engineRef.current = null;
@@ -436,7 +384,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
 
   const addAttachment = useCallback((a: Omit<ChatAttachment, 'id'>) => {
     setAttachments((list) =>
-      // The same item twice is almost certainly a double click.
       list.some((x) => x.kind === a.kind && x.title === a.title && x.text === a.text)
         ? list
         : [...list, { ...a, id: crypto.randomUUID() }],
@@ -459,7 +406,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
 
   const setTheme = useCallback((id: string) => {
     setThemeState(id);
-    setCustomGlowState(null); // choosing a preset clears the custom glow
+    setCustomGlowState(null);
   }, []);
 
   const setCustomGlow = useCallback((hex: string | null) => {
@@ -470,14 +417,11 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     async (source: ModelSource): Promise<boolean> => {
       setError(null);
       try {
-        // 1. Settle on a library entry to load.
         let entry: ModelEntry | undefined;
         if (source.type === 'add') {
           const result = await pickModels();
           setRejected(result.rejected);
           if (!result.added.length) {
-            // Nothing usable was chosen. If everything was rejected the UI shows
-            // why; if the dialog was cancelled, just stay put.
             await refreshModels();
             return false;
           }
@@ -504,15 +448,11 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         setActiveModelId(entry.id);
         if (source.type !== 'library') await refreshModels();
 
-        // 2. Stream it into the WebGPU engine. Nothing is copied: the bytes go
-        //    from disk through the app:// handler straight into the wasm heap.
         setStatus('reading');
         setProgress({ receivedBytes: 0, totalBytes: entry.size, ratio: 0 });
         const stream = await openModelStream(entry.id, setProgress);
 
         setStatus('initializing');
-        // Clear the ref as soon as the old engine is gone, so nothing can reach a
-        // disposed engine through it while the new one initializes.
         const previous = engineRef.current;
         engineRef.current = null;
         await previous?.dispose();
@@ -543,8 +483,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       const engine = engineRef.current;
       if (engine) {
         engine.updateConfig(next);
-        // temperature / system prompt apply at conversation creation, so reopen
-        // while preserving the current transcript as context.
         if (status === 'ready') {
           await engine.openConversation(messagesToTurns(messagesRef.current));
         }
@@ -553,7 +491,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     [status],
   );
 
-  // Persist the current transcript to IndexedDB under the active conversation.
   const persist = useCallback(
     async (id: string, msgs: ChatMessage[]) => {
       if (!msgs.some((m) => m.text.trim())) return;
@@ -578,7 +515,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         });
         await refreshConversations();
       } catch {
-        /* persistence is best-effort */
       }
     },
     [refreshConversations],
@@ -590,7 +526,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       const pending = attachments;
       if (!engine || status !== 'ready' || isGenerating || (!text.trim() && !pending.length)) return;
 
-      // Assign a conversation id on the first message of a new chat.
       let convId = activeIdRef.current;
       if (!convId) {
         convId = crypto.randomUUID();
@@ -611,8 +546,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         ...(meta.length ? { attachments: meta, modelText } : {}),
       };
       setAttachments([]);
-      // Email / Drive / workspace contents are private: in agent mode, sending
-      // anything off the machine afterwards needs the user's approval.
       if (pending.length) taintRef.current.privateDataRead = true;
       const assistantId = crypto.randomUUID();
       const update = (fn: (m: ChatMessage) => ChatMessage) =>
@@ -647,8 +580,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             modelText,
             agentContextRef.current,
           );
-          // The loop owns the context: every round becomes a fresh conversation
-          // built from its managed message list (see LlmEngine.generateFrom).
           const llm: LlmFn = (msgs, signal) =>
             (async function* () {
               const eng = engineRef.current;
@@ -685,8 +616,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
             },
           }));
         } else {
-          // Plain chat: if the question is about now, answer it from the web
-          // rather than from a model whose knowledge stopped at training time.
           let toSend = modelText;
           const decision = autoWebSearch
             ? decideAutoSearch(prompt, { hasAttachments: pending.length > 0 })
@@ -699,16 +628,12 @@ export function LlmProvider({ children }: { children: ReactNode }) {
                 toSend = formatSearchForChat(results, prompt);
                 update((m) => ({ ...m, sources: results }));
               } else {
-                // A backend that answers but finds nothing is the quiet failure
-                // case: without this the user gets a stale answer and no clue.
                 update((m) => ({
                   ...m,
                   text: '_[No web results came back — answering from the model’s own knowledge, which may be out of date.]_\n\n',
                 }));
               }
             } catch (err) {
-              // Searching is an enhancement: a missing key or a blocked proxy
-              // must not cost the user their answer, but they should see why.
               update((m) => ({ ...m, text: `_[Web search unavailable: ${cleanError(err)}]_\n\n` }));
             } finally {
               update((m) => ({ ...m, searching: false }));
@@ -722,8 +647,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         update((m) => ({
           ...m,
           text: m.text + `\n\n_[generation error: ${cleanError(err)}]_`,
-          // Agent replies render from their timeline, not `text` — so the error
-          // must go into the timeline too, or it is swallowed silently.
           agent: m.agent
             ? {
                 ...applyAgentEvent(m.agent, { type: 'notice', kind: 'error', message: `Error: ${cleanError(err)}` }),
@@ -736,7 +659,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
         agentAbortRef.current = null;
         approvalsRef.current.clear();
         setIsGenerating(false);
-        // Mark streaming done and persist the final transcript.
         setMessages((m) => {
           const final = m.map((msg) =>
             msg.id === assistantId
@@ -744,8 +666,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
               : msg,
           );
           void persist(convId!, final);
-          // Agent turns bypass the chat conversation; reseed it so plain chat
-          // afterwards still sees them.
           if (agentTurn) void engineRef.current?.openConversation(messagesToTurns(final)).catch(() => {});
           return final;
         });
@@ -754,15 +674,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     [status, isGenerating, persist, agentEnabled, autoWebSearch, workspace, settings, attachments],
   );
 
-  // Tool generations in flight (PDF, Research, SVN review). They share the one
-  // engine with chat, so while any runs the chat composer must stay disabled.
   const toolRunsRef = useRef(0);
 
-  /**
-   * Checks the engine ref, not `status` state: a caller that awaits loadModel()
-   * and then generates in the same async function holds a closure from before
-   * the load, where `status` was not yet 'ready'. The ref is always current.
-   */
   const generate = useCallback(
     (prompt: string, systemPrompt?: string): AsyncGenerator<string> => {
       const engine = engineRef.current;
@@ -783,10 +696,8 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   );
 
   const cancel = useCallback(() => {
-    // Downloads run in the main process, so cancelling one is an IPC call.
     void cancelDownload().catch(() => {});
     agentAbortRef.current?.abort();
-    // Unanswered approvals resolve as declined so the loop can unwind.
     for (const resolve of approvalsRef.current.values()) resolve(false);
     approvalsRef.current.clear();
     engineRef.current?.cancel();
@@ -803,21 +714,17 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     setActiveConversationId(null);
     activeIdRef.current = null;
     resetAgentState();
-    void engineRef.current?.openConversation([]); // fresh model context
+    void engineRef.current?.openConversation([]);
   }, []);
 
   const loadConversation = useCallback(async (id: string) => {
     const conv = await getConversation(id);
     if (!conv) return;
-    // Transcripts saved before control-token filtering existed still contain the
-    // raw `<image|>` noise, so clean them on the way out of storage too.
     const msgs: ChatMessage[] = conv.messages.map((m) => ({
       ...m,
       text: stripControlTokens(m.text),
       agent: m.agent ? { ...m.agent, running: false } : undefined,
     }));
-    // Restore the agent's compacted history, and re-arm the taint gate if this
-    // conversation already read workspace files.
     agentContextRef.current = conv.agentContext;
     taintRef.current = {
       privateDataRead: msgs.some(
@@ -829,7 +736,6 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     setMessages(msgs);
     setActiveConversationId(id);
     activeIdRef.current = id;
-    // Seed the model with the prior turns so it has context on resume.
     await engineRef.current?.openConversation(messagesToTurns(msgs));
   }, []);
 

@@ -23,7 +23,6 @@ const ICON: Record<string, string> = {
   fetch_url: '⇣',
 };
 
-/** An agent reply: prose, tool steps and supervisor notices, in order. */
 export default function AgentTimeline({ view, streaming }: { view: AgentView; streaming: boolean }) {
   const { send, isGenerating } = useLlm();
   const lastTextIdx = view.timeline.map((t) => t.kind).lastIndexOf('text');
@@ -80,7 +79,6 @@ function StepCard({ step }: { step: AgentStep }) {
   const [open, setOpen] = useState(false);
   const status = STATUS[step.status];
   const awaiting = step.status === 'awaiting_approval';
-  // For approvals, show exactly what will run.
   const detail =
     step.tool === 'write_file'
       ? String(step.args.content ?? '')

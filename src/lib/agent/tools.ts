@@ -1,14 +1,3 @@
-// The agent's tools, and the policy for which calls need the user's approval.
-//
-// Odysseus gates tools through ToolPolicy / tool_capabilities / tool_approvals;
-// this keeps the idea at the size of this toolset:
-//   - read-only workspace tools and web lookups run automatically
-//   - anything that changes the machine (write_file, run_command) always asks
-//   - taint gate: once workspace files have been read into the conversation,
-//     any network call asks first — private data plus an outbound request is
-//     how a prompt-injected page would exfiltrate it
-//   - fetching a private / local address always asks (local services are
-//     private data too)
 
 import { cleanError, requireDesktop } from '../desktop';
 import { webSearch, domainOf } from '../search';
@@ -17,16 +6,11 @@ import type { ToolCall } from './types';
 
 export interface ToolSpec {
   name: string;
-  /** One line for the system prompt. */
   summary: string;
   example: string;
-  /** Argument a bare (non-JSON) block body maps to. */
   primaryArg?: string;
-  /** Touches data outside the conversation that the user may consider private. */
   readsPrivateData?: boolean;
-  /** Sends something off this machine. */
   network?: boolean;
-  /** Changes files or runs programs. */
   effectful?: boolean;
 }
 
@@ -108,7 +92,6 @@ const num = (v: unknown) => {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 };
 
-/** Loopback, RFC 1918, link-local and bare machine names (e.g. "washim-pc"). */
 export function isPrivateHost(url: string): boolean {
   let host: string;
   try {
@@ -119,17 +102,15 @@ export function isPrivateHost(url: string): boolean {
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) {
     return true;
   }
-  // IPv6 literals only — a hostname like "fcc.gov" must not match the fc00::/7 prefix.
   if (host.includes(':')) return host === '::1' || /^(fe80|fc|fd)/.test(host);
   const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host);
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
     return a === 127 || a === 10 || a === 0 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254);
   }
-  return !host.includes('.'); // single-label names resolve on the local network
+  return !host.includes('.');
 }
 
-/** Taint state for one conversation: has private data entered the context? */
 export interface TaintState {
   privateDataRead: boolean;
 }

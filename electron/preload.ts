@@ -1,11 +1,6 @@
-// Preload — the only surface the renderer gets onto the main process.
-// Deliberately narrow: model library management, app info, and opening external
-// links. No filesystem access, no arbitrary IPC.
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
-// SVN Studio tab. Thin passthroughs — shapes and validation live in
-// electron/svn/ipc.ts, typed for the renderer in src/lib/svn/api.ts.
 const svn = {
   getSettings: () => ipcRenderer.invoke('svn:getSettings'),
   saveSettings: (input: unknown) => ipcRenderer.invoke('svn:saveSettings', input),
@@ -36,14 +31,11 @@ const svn = {
     ipcRenderer.invoke('svn:uploadPick', targetFolder, kind),
   importPaths: (targetFolder: string, sources: string[]) =>
     ipcRenderer.invoke('svn:importPaths', targetFolder, sources),
-  /** Real on-disk path of a dropped File (File.path no longer exists). */
   pathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   aiContext: (scope: unknown, budget: number) => ipcRenderer.invoke('svn:aiContext', scope, budget),
 };
 
-// Git Studio tab (Git Pilot port). Handlers live in electron/git/ipc.ts,
-// typed for the renderer in src/lib/git/api.ts.
 const git = {
   gitVersion: () => ipcRenderer.invoke('git:gitVersion'),
   openRepository: () => ipcRenderer.invoke('git:openRepository'),
@@ -72,10 +64,11 @@ const git = {
   openTerminal: (repo: string) => ipcRenderer.invoke('git:openTerminal', repo),
   openCreateRemote: (repo: string) => ipcRenderer.invoke('git:openCreateRemote', repo),
 
-  // Credential scan: find secrets in the working tree and the history, remove
-  // the selected ones (rewriting history), then optionally force-push.
   scanSecrets: (repo: string) => ipcRenderer.invoke('git:scanSecrets', repo),
   scanStaged: (repo: string) => ipcRenderer.invoke('git:scanStaged', repo),
+
+  scanComments: (repo: string) => ipcRenderer.invoke('git:scanComments', repo),
+  removeComments: (repo: string, ids: string[]) => ipcRenderer.invoke('git:removeComments', repo, ids),
   scanCandidates: (repo: string, scanId?: string) => ipcRenderer.invoke('git:scanCandidates', repo, scanId),
   removeSecrets: (repo: string, findingIds: string[], scanId?: string) => ipcRenderer.invoke('git:removeSecrets', repo, findingIds, scanId),
   forcePush: (repo: string, remote: string, branch: string) => ipcRenderer.invoke('git:forcePush', repo, remote, branch),
@@ -110,8 +103,6 @@ export interface AppInfo {
   searchApi: string;
 }
 
-// Chat agent tools. The workspace root is held by main; calls take only
-// workspace-relative paths.
 const agent = {
   getWorkspace: () => ipcRenderer.invoke('agent:getWorkspace'),
   pickWorkspace: () => ipcRenderer.invoke('agent:pickWorkspace'),
@@ -127,8 +118,6 @@ const agent = {
   readForAttach: (rel: string) => ipcRenderer.invoke('agent:readForAttach', rel),
 };
 
-// Chat sidebar: Google account (read-only Gmail + Drive). Tokens stay in main;
-// see electron/google/.
 const google = {
   status: () => ipcRenderer.invoke('google:status'),
   saveClient: (input: { clientId: string; clientSecret: string }) => ipcRenderer.invoke('google:saveClient', input),
@@ -143,8 +132,6 @@ const google = {
   getDriveFile: (id: string) => ipcRenderer.invoke('drive:get', id),
 };
 
-// Optional app login (Auth0) — required before connecting Google. Tokens stay
-// in main; see electron/auth0/.
 const auth0 = {
   status: () => ipcRenderer.invoke('auth0:status'),
   verify: () => ipcRenderer.invoke('auth0:verify'),
@@ -155,8 +142,6 @@ const auth0 = {
   logout: () => ipcRenderer.invoke('auth0:logout'),
 };
 
-// Web search: a Tavily API key (Settings → Web search) or the self-hosted
-// backend. The key stays in main; only its masked form comes back here.
 const search = {
   status: () => ipcRenderer.invoke('search:status'),
   saveKey: (key: string, provider?: 'keenable' | 'tavily') => ipcRenderer.invoke('search:saveKey', key, provider),
@@ -172,20 +157,16 @@ const bridge = {
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('app:openExternal', url),
 
-  /** URL the renderer fetches to stream a library model off disk. */
   modelStreamUrl: (id: string): string =>
     `app://imaginarium/model/${encodeURIComponent(id)}`,
 
-  /** Every model in the library, with entries whose files vanished pruned. */
   listModels: (): Promise<ModelEntry[]> => ipcRenderer.invoke('model:list'),
 
   getModel: (id: string): Promise<ModelEntry | null> =>
     ipcRenderer.invoke('model:get', id),
 
-  /** Native multi-select picker. Each file is validated independently. */
   addModels: (): Promise<AddResult> => ipcRenderer.invoke('model:add'),
 
-  /** Remove from the library. Downloaded files are deleted; user files are not. */
   removeModel: (id: string): Promise<void> =>
     ipcRenderer.invoke('model:remove', id),
 
@@ -195,13 +176,11 @@ const bridge = {
   revealModel: (id: string): Promise<void> =>
     ipcRenderer.invoke('model:revealInFolder', id),
 
-  /** Download a suggested model; it joins the library like any other file. */
   downloadModel: (url: string, fileName: string): Promise<ModelEntry> =>
     ipcRenderer.invoke('model:download', url, fileName),
 
   cancelDownload: (): Promise<void> => ipcRenderer.invoke('model:cancelDownload'),
 
-  /** Subscribe to download progress. Returns an unsubscribe function. */
   onDownloadProgress: (fn: (tick: DownloadTick) => void): (() => void) => {
     const listener = (_e: unknown, tick: DownloadTick) => fn(tick);
     ipcRenderer.on('model:downloadProgress', listener);

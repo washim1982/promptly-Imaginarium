@@ -1,5 +1,3 @@
-// Shared Google-account status for the Email and Google Drive sections, so
-// connecting in one updates the other without a refetch.
 
 import { useEffect, useSyncExternalStore } from 'react';
 import { googleApi, type GoogleStatus } from '../../../lib/google';

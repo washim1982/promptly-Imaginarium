@@ -1,8 +1,5 @@
 import { useLlm } from '../state/LlmContext';
 
-// Desktop framing: Electron bundles its own Chromium, so "update your browser"
-// is never the answer here — if WebGPU is missing it's the GPU, the driver, or
-// hardware acceleration being off.
 export default function UnsupportedScreen() {
   const { gpu } = useLlm();
   return (

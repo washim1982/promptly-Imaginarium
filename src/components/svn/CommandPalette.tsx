@@ -48,7 +48,6 @@ export function CommandPalette({ open, onClose, files, commands, onSelectFile }:
 
   useEffect(() => setActiveIndex(0), [results.length]);
 
-  // Keep the highlighted row visible while arrowing through a long list.
   useEffect(() => {
     listRef.current?.children[activeIndex]?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex]);

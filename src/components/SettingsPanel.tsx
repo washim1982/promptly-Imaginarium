@@ -54,7 +54,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Model library — any number of .litertlm files, added by browsing. */}
+        {}
         <section className="mb-7">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="mono text-[11px] text-white/40">
@@ -113,7 +113,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                         <button
                           onClick={(e) => {
                             e.preventDefault();
-                            // window.prompt() throws in Electron; use the in-app dialog.
                             void ask({ title: 'Rename model', defaultValue: m.label, confirmLabel: 'Rename' }).then(
                               (next) => {
                                 if (next != null) void renameModel(m.id, next);
@@ -159,7 +158,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           )}
         </section>
 
-        {/* Workspace display */}
+        {}
         <section className="mb-7">
           <h3 className="mono mb-3 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">
             ▣ Workspace Display
@@ -190,7 +189,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
         </section>
 
-        {/* Visual theme */}
+        {}
         <section className="mb-7">
           <h3 className="mono mb-3 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">
             ◑ System Visual Theme
@@ -262,7 +261,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </div>
         </section>
 
-        {/* Temperature */}
+        {}
         <section className="mb-7">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="mono text-[11px] text-white/40">Temperature</h3>
@@ -283,8 +282,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           />
         </section>
 
-        {/* Top-K / Top-P. These are not cosmetic: without them the sampler
-            falls back to greedy decoding and ignores the temperature. */}
+        {}
         <section className="mb-7">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="mono text-[11px] text-white/40">Top-K</h3>
@@ -324,7 +322,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </p>
         </section>
 
-        {/* Reply length cap */}
+        {}
         <section className="mb-7">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="mono text-[11px] text-white/40">Max reply tokens</h3>
@@ -350,7 +348,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
         <WebSearchSettings />
 
-        {/* Context window */}
+        {}
         <section className="mb-7">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="mono text-[11px] text-white/40">Context window</h3>
@@ -374,7 +372,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           </p>
         </section>
 
-        {/* System prompt */}
+        {}
         <section>
           <h3 className="mono mb-2 text-[11px] text-white/40">System prompt</h3>
           <textarea

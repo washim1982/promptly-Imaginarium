@@ -1,5 +1,3 @@
-// IPC for web search setup and queries. The API key never crosses to the
-// renderer — only its masked form, and the results.
 
 import { ipcMain } from 'electron';
 import * as search from './tavily';

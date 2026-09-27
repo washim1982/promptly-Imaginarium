@@ -1,12 +1,3 @@
-// Git Studio, a tab of Imaginarium. Port of Git Pilot (a friendly Windows Git
-// client): recent-repository sidebar, file explorer with upload indicators,
-// stage / unstage / discard / commit, fetch / fast-forward pull / push, branch
-// switch / create / guarded merge, history, clone and init, remote + identity
-// settings, and Git Credential Manager sign-in. Git runs in the main process
-// (electron/git/); this is Git Pilot's App.tsx re-skinned to the app theme.
-//
-// Not ported: Git Pilot's light/system theme picker (Imaginarium is dark-only
-// and follows the accent from Settings) and its browser demo mode.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -31,6 +22,7 @@ import { Modal, Spinner } from '../components/git/Modal';
 import { Sidebar, Welcome } from '../components/git/Sidebar';
 import { RepoWorkspace, type Tab } from '../components/git/Workspace';
 import { SecretScanModal } from '../components/git/SecretScanModal';
+import { CommentAuditModal } from '../components/git/CommentAuditModal';
 import '../components/git/git-studio.css';
 
 type DialogName = 'clone' | 'settings' | 'newBranch' | 'mergeBranch' | 'remoteProblem' | 'discard' | null;
@@ -38,8 +30,6 @@ type DialogName = 'clone' | 'settings' | 'newBranch' | 'mergeBranch' | 'remotePr
 const ACTIVE_REPOSITORY_KEY = 'imaginarium.git.activeRepository';
 const ACTIVE_TAB_KEY = 'imaginarium.git.activeTab';
 
-// localStorage holds per-viewer conveniences only; it can throw when storage is
-// blocked, and the tab works without it.
 function readStorage(key: string): string {
   try {
     return window.localStorage.getItem(key) || '';
@@ -52,7 +42,6 @@ function writeStorage(key: string, value: string | null): void {
     if (value === null) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, value);
   } catch {
-    /* still works for this session */
   }
 }
 
@@ -83,12 +72,10 @@ export default function GitStudio() {
   const [globalIdentity, setGlobalIdentity] = useState(true);
   const [remoteName, setRemoteName] = useState('origin');
   const [remoteUrl, setRemoteUrl] = useState('');
-  // undefined while the Git Credential Manager check is running.
   const [auth, setAuth] = useState<AuthInfo | null | undefined>(undefined);
   const [scanOpen, setScanOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [scanningStaged, setScanningStaged] = useState(false);
-  // Set when a pre-commit scan found something (or could not run); holds the
-  // commit it is standing in front of. `scan: null` = the scan itself failed.
   const [commitGate, setCommitGate] = useState<{ scan: ScanResult | null; root: string; message: string } | null>(null);
 
   const notify = useCallback((type: 'success' | 'error', message: string) => {
@@ -134,7 +121,6 @@ export default function GitStudio() {
     [applyRepoState, refreshRecents],
   );
 
-  // Restore the last open repository, as Git Pilot does on launch.
   useEffect(() => {
     let cancelled = false;
     const restoreSession = async () => {
@@ -166,8 +152,6 @@ export default function GitStudio() {
     };
   }, [applyRepoState, notify]);
 
-  // `busy` is read through a ref so a queued action (e.g. the focus refresh)
-  // never sees a stale value from the render that created it.
   const busyRef = useRef(false);
   const setBusyBoth = useCallback((value: boolean) => {
     busyRef.current = value;
@@ -204,14 +188,6 @@ export default function GitStudio() {
     [perform],
   );
 
-  /**
-   * Commit, but scan the staged content first. A secret is cheap to fix before
-   * the commit exists and expensive afterwards — once it is in the history,
-   * taking it out means rewriting commits everyone else has to re-clone.
-   *
-   * If the scan itself fails the commit is not silently let through: the gate
-   * opens with the error, so the choice is the user's either way.
-   */
   const commitWithScan = useCallback(async () => {
     if (!repo || busyRef.current) return;
     const root = repo.root;
@@ -270,7 +246,6 @@ export default function GitStudio() {
     [repo, notify, setBusyBoth],
   );
 
-  // Ctrl+O opens a repository while this tab is showing.
   const openRef = useRef(openRepository);
   openRef.current = openRepository;
   useEffect(() => {
@@ -284,8 +259,6 @@ export default function GitStudio() {
     return () => window.removeEventListener('keydown', onShortcut);
   }, []);
 
-  // Files change outside the app (an editor, a terminal) — pick that up
-  // quietly when the window regains focus rather than showing stale status.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
@@ -331,8 +304,6 @@ export default function GitStudio() {
     });
   };
 
-  // Save only what changed: Git Pilot always re-saved the identity, so adding a
-  // remote was impossible until a name and email were filled in.
   const identityChanged =
     !!repo && (identityName.trim() !== repo.identity.name || identityEmail.trim() !== repo.identity.email);
   const remoteChanged =
@@ -424,6 +395,7 @@ export default function GitStudio() {
           onSettings={() => void openSettings()}
           onOpenExplorer={() => void gitApi.openInExplorer(repo.root).catch((e) => notify('error', errorMessage(e)))}
           onScan={() => setScanOpen(true)}
+          onComments={() => setCommentsOpen(true)}
           onOpenTerminal={() =>
             void gitApi.openTerminal(repo.root).then(
               () => notify('success', 'Terminal opened in this repository.'),
@@ -468,6 +440,15 @@ export default function GitStudio() {
         <SecretScanModal
           repo={repo}
           onClose={() => setScanOpen(false)}
+          onState={setRepo}
+          onNotify={notify}
+        />
+      )}
+
+      {commentsOpen && repo && (
+        <CommentAuditModal
+          repo={repo}
+          onClose={() => setCommentsOpen(false)}
           onState={setRepo}
           onNotify={notify}
         />
@@ -617,7 +598,6 @@ export default function GitStudio() {
       )}
 
       {dialogName === 'discard' && repo && discardFiles.length > 0 && (
-        // Replaces Git Pilot's window.confirm with the app's own dialog.
         <Modal
           title={`Discard changes in ${discardFiles.length} file${discardFiles.length === 1 ? '' : 's'}?`}
           subtitle="This cannot be undone."

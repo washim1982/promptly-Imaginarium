@@ -1,5 +1,3 @@
-// Renderer copies of the shapes in electron/svn/types.ts (the two sides are
-// separate TypeScript projects, so they can't share a module).
 
 export type SvnItemStatus =
   | 'normal'
@@ -42,7 +40,6 @@ export interface SvnSettingsPublic {
   hasPassword: boolean;
 }
 
-/** What the AI reviewer looks at. "" in folders means the whole working copy. */
 export interface AiScope {
   files: string[];
   folders: string[];

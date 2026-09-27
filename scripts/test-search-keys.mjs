@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
-// Run the main-process key lifecycle against isolated storage/network mocks.
 const files = new Map();
 let encryptedStorage = true;
 let rejected = false;

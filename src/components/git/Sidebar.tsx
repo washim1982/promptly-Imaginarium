@@ -1,4 +1,3 @@
-// Git Pilot's recent-repository sidebar and welcome screen.
 
 import { useState } from 'react';
 import {
@@ -106,8 +105,6 @@ export function Sidebar({
               {active ? (
                 <span className="gs-active-dot" title="Open" />
               ) : (
-                // A sibling of the row button, not nested in it: a button
-                // inside a button is invalid HTML and swallows keyboard focus.
                 <button
                   className="gs-forget-repo"
                   title="Remove from recent repositories"

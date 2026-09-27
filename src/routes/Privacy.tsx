@@ -1,7 +1,5 @@
 import { openExternal } from '../lib/desktop';
 
-// Privacy policy for the desktop build. Every claim here is checkable against
-// the code — keep it that way when the storage or networking behaviour changes.
 export default function Privacy() {
   return (
     <div className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-10">

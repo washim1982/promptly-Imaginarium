@@ -1,6 +1,3 @@
-// Local chat history persistence in IndexedDB. Fully client-side, no auth, no
-// server — each browser keeps its own private history (matches the app's
-// privacy model). Plus JSON export/import for backup & portability.
 
 import type { AgentContextState, AgentView } from './agent/session';
 import type { AttachmentMeta } from './attachments';
@@ -10,13 +7,9 @@ export interface StoredMessage {
   role: 'user' | 'assistant';
   text: string;
   createdAt: number;
-  // Web sources an assistant used (present only for web-search-grounded replies).
   sources?: { title: string; url: string; content: string }[];
-  /** Agent replies: the steps and prose in order (see lib/agent/session.ts). */
   agent?: Omit<AgentView, 'running' | 'usage'>;
-  /** Emails / Drive / workspace files sent with a user message (titles only). */
   attachments?: AttachmentMeta[];
-  /** The full text the model received for that message, attachments included. */
   modelText?: string;
 }
 
@@ -26,7 +19,6 @@ export interface Conversation {
   createdAt: number;
   updatedAt: number;
   messages: StoredMessage[];
-  /** Earlier turns the agent compacted into summaries, carried across turns. */
   agentContext?: AgentContextState;
 }
 
@@ -90,7 +82,6 @@ export async function listConversations(): Promise<ConversationMeta[]> {
   return all.map(({ messages: _messages, ...meta }) => meta);
 }
 
-// ---- Export / Import (backup & portability without a server) --------------
 
 export async function exportConversations(): Promise<void> {
   const all = await getAllConversations();

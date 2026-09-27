@@ -1,4 +1,3 @@
-// Read-only Gmail access (gmail.readonly): list/search messages and read one.
 
 import { googleGet, requireScope } from './auth';
 import { htmlToText } from '../agent/tools';
@@ -47,7 +46,6 @@ interface RawMessage {
 const header = (headers: Header[] | undefined, name: string) =>
   headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
-// Gmail's snippet is HTML-escaped.
 const unescapeSnippet = (s: string) =>
   s.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
@@ -71,7 +69,6 @@ export async function listMessages(
   await requireScope('gmail');
   const url = new URL(`${API}/messages`);
   url.searchParams.set('maxResults', String(PAGE_SIZE));
-  // Gmail's own search syntax (from:, subject:, has:attachment, …) works as-is.
   url.searchParams.set('q', query.trim() || 'in:inbox');
   if (pageToken) url.searchParams.set('pageToken', pageToken);
   const list = (await googleGet(url.toString())) as { messages?: { id: string }[]; nextPageToken?: string };
@@ -89,7 +86,6 @@ export async function listMessages(
 
 const decode = (data: string) => Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
 
-/** The best readable body: text/plain if there is one, otherwise HTML as text. */
 export function extractBody(payload: Part | undefined): { body: string; attachments: string[] } {
   const plain: string[] = [];
   const html: string[] = [];

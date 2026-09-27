@@ -17,8 +17,6 @@ import java from 'react-syntax-highlighter/dist/esm/languages/prism/java';
 import yaml from 'react-syntax-highlighter/dist/esm/languages/prism/yaml';
 import markdownLang from 'react-syntax-highlighter/dist/esm/languages/prism/markdown';
 
-// Register only the languages we care about — keeps the bundle small vs. the
-// full Prism build (which bundles ~200 grammars).
 const LANGS: Record<string, any> = {
   jsx,
   tsx,
@@ -65,7 +63,6 @@ export default function CodeBlock({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* clipboard unavailable */
     }
   }
 
@@ -87,11 +84,6 @@ export default function CodeBlock({
         style={oneDark}
         showLineNumbers
         wrapLongLines
-        // With wrapLongLines + showLineNumbers the library makes every line
-        // `display: flex`, which turns each highlighted token into its own flex
-        // item — a long line then wraps token-by-token and renders out of order.
-        // A block with a hanging indent wraps as text should, and continuation
-        // rows line up after the line-number gutter (2.2em + 1em padding).
         lineProps={{
           style: { display: 'block', paddingLeft: '3.2em', textIndent: '-3.2em', wordBreak: 'break-word' },
         }}
@@ -101,7 +93,6 @@ export default function CodeBlock({
           fontSize: '13px',
           padding: '14px 12px',
         }}
-        // text-indent inherits into the inline-block number; reset it there.
         lineNumberStyle={{ color: 'rgba(255,255,255,0.25)', minWidth: '2.2em', textIndent: 0 }}
         codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
       >

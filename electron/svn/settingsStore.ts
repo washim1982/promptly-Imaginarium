@@ -1,9 +1,3 @@
-// SVN connection settings, persisted in the app's userData folder.
-//
-// SVN Studio's web server encrypted the password with AES-GCM keyed from a
-// SETTINGS_SECRET environment variable. A desktop app has a better option:
-// Electron's safeStorage, which on Windows is DPAPI bound to the current user —
-// the same protection the WPF version used — with no secret to configure.
 
 import { app, safeStorage } from 'electron';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,7 +9,7 @@ interface StoredFile {
   username: string;
   workingCopyPath: string;
   svnPath?: string;
-  passwordEnc?: string; // base64 of safeStorage ciphertext
+  passwordEnc?: string;
 }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'svn-settings.json');
@@ -31,8 +25,6 @@ function decrypt(payload: string): string {
   try {
     return safeStorage.decryptString(Buffer.from(payload, 'base64'));
   } catch {
-    // Encrypted under a different Windows user/profile — treat as unset rather
-    // than failing every svn call.
     return '';
   }
 }
@@ -75,7 +67,6 @@ export function toPublic(settings: SvnSettings | null): SvnSettingsPublic {
   };
 }
 
-/** Settings with defaults filled in, for handlers that only need the svn path. */
 export async function loadOrDefault(): Promise<SvnSettings> {
   return (
     (await loadSettings()) ?? {

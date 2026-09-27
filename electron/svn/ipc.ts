@@ -1,7 +1,3 @@
-// IPC surface for the SVN Studio tab. Each handler replaces one route from SVN
-// Studio's Express server (web/server/src/routes/*.ts); the preload exposes them
-// as window.imaginarium.svn.*. Every path from the renderer goes through
-// assertSafeRelativePath, exactly as the routes did.
 
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { assertSafeRelativePath } from './pathSafety';
@@ -27,7 +23,6 @@ const safeList = (settings: SvnSettings, v: unknown) =>
 
 const windowOf = (e: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)!;
 
-/** Register a handler that needs a configured working copy. */
 function withWc<A extends unknown[], R>(
   channel: string,
   fn: (settings: SvnSettings, ...args: A) => Promise<R>,
@@ -36,7 +31,6 @@ function withWc<A extends unknown[], R>(
 }
 
 export function registerSvnIpc(): void {
-  // ---- settings ---------------------------------------------------------------
 
   ipcMain.handle('svn:getSettings', async () => settingsStore.toPublic(await settingsStore.loadSettings()));
 
@@ -51,7 +45,6 @@ export function registerSvnIpc(): void {
       const merged: SvnSettings = {
         repoUrl: input.repoUrl ?? '',
         username: input.username ?? existing?.username ?? '',
-        // Blank means "keep the stored password", as in SVN Studio.
         password: input.password || existing?.password || '',
         workingCopyPath: input.workingCopyPath,
         svnPath: input.svnPath ?? existing?.svnPath ?? '',
@@ -86,7 +79,6 @@ export function registerSvnIpc(): void {
     return settingsStore.toPublic(merged);
   });
 
-  // Native pickers — the web build had to make users type paths.
   ipcMain.handle('svn:browseFolder', async (e, title?: string) => {
     const r = await dialog.showOpenDialog(windowOf(e), {
       title: title ?? 'Choose a working-copy folder',
@@ -104,7 +96,6 @@ export function registerSvnIpc(): void {
     return r.canceled ? null : r.filePaths[0] ?? null;
   });
 
-  // ---- reads -------------------------------------------------------------------
 
   withWc('svn:tree', (s) => svnService.getTree(s));
   withWc('svn:status', (s) => svnService.getStatus(s));
@@ -112,7 +103,6 @@ export function registerSvnIpc(): void {
   withWc('svn:diff', (s, p: string) => svnService.getDiff(s, safe(s, p)));
   withWc('svn:history', (s, p?: string) => svnService.getLog(s, p ? safe(s, p) : undefined));
 
-  // ---- writes ------------------------------------------------------------------
 
   withWc('svn:saveFile', (s, p: string, content: string) =>
     svnService.writeFileContent(s, safe(s, p), String(content ?? '')),
@@ -137,7 +127,6 @@ export function registerSvnIpc(): void {
   withWc('svn:lock', (s, p: string, message?: string) => svnService.lockPath(s, safe(s, p), message));
   withWc('svn:unlock', (s, p: string) => svnService.unlockPath(s, safe(s, p)));
 
-  // ---- import (replaces the multipart /svn/upload route) --------------------------
 
   ipcMain.handle('svn:uploadPick', async (e, targetFolder: string, kind: 'files' | 'folder') => {
     const s = await requireSettings();
@@ -154,13 +143,11 @@ export function registerSvnIpc(): void {
     return { added: await svnService.importPaths(s, folder, r.filePaths, (rel) => safe(s, rel)) };
   });
 
-  // Drag-and-drop: the preload resolves dropped File objects to real paths.
   withWc('svn:importPaths', async (s, targetFolder: string, sources: string[]) => {
     const list = (Array.isArray(sources) ? sources : []).map(String).filter(Boolean);
     return { added: await svnService.importPaths(s, safe(s, targetFolder), list, (rel) => safe(s, rel)) };
   });
 
-  // ---- AI review context -------------------------------------------------------------
 
   withWc('svn:aiContext', async (s, scope: AiScope, budget: number) => {
     const clean: AiScope = {

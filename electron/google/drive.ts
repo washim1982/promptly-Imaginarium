@@ -1,6 +1,3 @@
-// Read-only Google Drive access (drive.readonly): browse/search files and read
-// one as text. Google Docs/Sheets/Slides are exported to text; PDFs come back
-// as bytes so the renderer's pdf.js (already used by PDF Tools) extracts them.
 
 import { googleGet, requireScope } from './auth';
 
@@ -47,7 +44,6 @@ const toFile = (f: RawFile): DriveFile => ({
   isFolder: f.mimeType === FOLDER,
 });
 
-/** Drive query string literal: backslash and quote escaped. */
 export const driveLiteral = (s: string) => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 
 const validId = (id: unknown) => {
@@ -75,7 +71,6 @@ export async function listFiles(
   url.searchParams.set('fields', `nextPageToken,files(${FIELDS})`);
   url.searchParams.set('supportsAllDrives', 'true');
   url.searchParams.set('includeItemsFromAllDrives', 'true');
-  // Drive refuses orderBy together with a fullText search.
   if (!search.trim()) url.searchParams.set('orderBy', 'folder,modifiedTime desc');
   if (pageToken) url.searchParams.set('pageToken', pageToken);
   const res = (await googleGet(url.toString())) as { files?: RawFile[]; nextPageToken?: string };

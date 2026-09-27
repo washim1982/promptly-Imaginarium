@@ -1,6 +1,3 @@
-// The open-repository workspace: file explorer, overview cards, and the
-// Changes / History / Branches tabs. Port of Git Pilot's RepoWorkspace and its
-// child views.
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
@@ -24,6 +21,7 @@ import {
   GitMerge,
   History,
   KeyRound,
+  MessageSquare,
   Minus,
   Plus,
   RefreshCw,
@@ -48,7 +46,6 @@ import { Spinner } from './Modal';
 
 export type Tab = 'changes' | 'history' | 'branches';
 
-// ---- Changes ------------------------------------------------------------------------
 
 interface ChangesViewProps {
   repo: RepoState;
@@ -185,7 +182,6 @@ function ChangesView({
           value={commitMessage}
           onChange={(event) => onCommitMessage(event.target.value)}
           onKeyDown={(event) => {
-            // Ctrl+Enter commits, as in most Git clients.
             if (event.key === 'Enter' && event.ctrlKey && stagedCount && commitMessage.trim() && !busy) {
               event.preventDefault();
               onCommit();
@@ -221,7 +217,6 @@ function ChangesView({
   );
 }
 
-// ---- History ------------------------------------------------------------------------
 
 function HistoryView({ repo, onCopied }: { repo: RepoState; onCopied: (hash: string) => void }) {
   return (
@@ -279,7 +274,6 @@ function HistoryView({ repo, onCopied }: { repo: RepoState; onCopied: (hash: str
   );
 }
 
-// ---- Branches -----------------------------------------------------------------------
 
 interface BranchesViewProps {
   repo: RepoState;
@@ -363,7 +357,6 @@ function BranchesView({ repo, busy, onSwitch, onMerge, onNew, onSettings }: Bran
   );
 }
 
-// ---- File explorer -------------------------------------------------------------------
 
 function RepoFileExplorer({ repo }: { repo: RepoState }) {
   const [query, setQuery] = useState('');
@@ -377,7 +370,6 @@ function RepoFileExplorer({ repo }: { repo: RepoState }) {
   const tree = useMemo(() => buildFileTree(visibleFiles), [visibleFiles]);
   const uploadedCount = useMemo(() => repo.files.filter((file) => file.uploaded).length, [repo.files]);
 
-  // A newly opened repository starts with its top-level folders expanded.
   useEffect(() => {
     const topLevelFolders = buildFileTree(repo.files)
       .filter((node) => node.kind === 'folder')
@@ -499,7 +491,6 @@ function RepoFileExplorer({ repo }: { repo: RepoState }) {
   );
 }
 
-// ---- Workspace ----------------------------------------------------------------------
 
 interface RepoWorkspaceProps {
   repo: RepoState;
@@ -523,6 +514,7 @@ interface RepoWorkspaceProps {
   onOpenExplorer: () => void;
   onOpenTerminal: () => void;
   onScan: () => void;
+  onComments: () => void;
   onCopied: (hash: string) => void;
 }
 
@@ -548,6 +540,7 @@ export function RepoWorkspace({
   onOpenExplorer,
   onOpenTerminal,
   onScan,
+  onComments,
   onCopied,
 }: RepoWorkspaceProps) {
   const staged = repo.changes.filter((change) => change.staged).length;
@@ -582,6 +575,13 @@ export function RepoWorkspace({
             title="Find tokens, keys and passwords in your files and in the commit history"
           >
             <ShieldAlert size={14} /> Scan
+          </button>
+          <button
+            className="gs-button secondary"
+            onClick={onComments}
+            title="Review every comment in the working tree and remove the ones you pick"
+          >
+            <MessageSquare size={14} /> Comments
           </button>
           <button className="gs-button sign-in" onClick={onSettings}>
             <KeyRound size={14} /> Account & remote

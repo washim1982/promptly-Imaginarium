@@ -1,24 +1,3 @@
-// Git operations for the Git Studio tab. Port of Git Pilot's
-// electron/git-service.ts, with these changes:
-//
-//  - git runs via spawn with a timeout that kills the whole process tree
-//    (git → git-remote-https → credential helper), not just git.exe.
-//  - Every user-supplied value that lands on a git command line is kept from
-//    being read as an option: clone URLs go after `--`, and branch/remote names
-//    and URLs that start with "-" are rejected. (`git clone --upload-pack=…`
-//    runs a program.)
-//  - File operations use --literal-pathspecs, so a file named `*.js` or
-//    `:(top)` means that file rather than a pattern, and they are batched so a
-//    large selection doesn't overflow the Windows command-line limit.
-//  - Status lists untracked files individually (-uall). Git Pilot's default
-//    collapsed an untracked folder to "dir/", which Discard's `git clean -f`
-//    then silently skipped (it needs -d for directories).
-//  - A fresh repository with no commits shows its branch name instead of
-//    "Detached HEAD", so the first push isn't refused.
-//  - Branch listing uses a control-character separator, since `|` is legal in
-//    a branch name.
-//  - Repository state loads in one parallel round of git calls instead of
-//    several dependent ones (see readState).
 
 import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
@@ -37,9 +16,7 @@ interface CommandOptions {
 }
 
 const MAX_OUTPUT = 64 * 1024 * 1024;
-/** The explorer lists at most this many files; state is re-sent on every operation. */
 const MAX_FILES = 20_000;
-/** Total path characters per batched git call — well inside Windows' 32K limit. */
 const BATCH_CHARS = 20_000;
 const LARGE_FILE_BYTES = 100 * 1024 * 1024;
 
@@ -79,7 +56,6 @@ export function runGit(args: string[], cwd?: string, options: CommandOptions = {
       cwd,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // Git Pilot's choice: let Git Credential Manager show its own sign-in UI.
       env: { ...process.env, GIT_TERMINAL_PROMPT: '1' },
     });
     const out: Buffer[] = [];
@@ -133,7 +109,6 @@ async function optionalGit(args: string[], cwd?: string): Promise<string> {
   }
 }
 
-/** Run a pathspec-taking git command over `files`, in command-line-sized batches. */
 async function runForFiles(prefix: string[], files: string[], cwd: string): Promise<void> {
   let batch: string[] = [];
   let chars = 0;
@@ -171,7 +146,6 @@ function changeStatus(indexCode: string, workTreeCode: string): ChangeStatus {
   return 'unknown';
 }
 
-/** Text after the first `count` space-separated fields — a path may contain spaces. */
 function afterFields(entry: string, count: number): string {
   let at = 0;
   for (let i = 0; i < count; i++) {
@@ -182,7 +156,6 @@ function afterFields(entry: string, count: number): string {
 }
 
 export interface ParsedStatus {
-  /** Branch name (also for an unborn branch), or '' when detached. */
   head: string;
   upstream: string;
   ahead: number;
@@ -190,12 +163,6 @@ export interface ParsedStatus {
   changes: FileChange[];
 }
 
-/**
- * `git status --porcelain=v2 --branch -z`. v2 (Git Pilot used v1) carries the
- * branch, upstream and ahead/behind counts in its headers, which saves three
- * separate git calls per refresh. Change codes use "." for "unchanged"; they
- * are mapped to v1's " " so FileChange reads the same as before.
- */
 export function parseStatus(raw: string): ParsedStatus {
   const entries = raw.split('\0').filter(Boolean);
   const result: ParsedStatus = { head: '', upstream: '', ahead: 0, behind: 0, changes: [] };
@@ -228,7 +195,6 @@ export function parseStatus(raw: string): ParsedStatus {
       codes = entry.slice(2, 4);
       filePath = afterFields(entry, 8);
     } else if (kind === '2') {
-      // A rename/copy: "2 XY … Xscore new\0old".
       codes = entry.slice(2, 4);
       filePath = afterFields(entry, 9);
       oldPath = entries[index + 1];
@@ -237,7 +203,7 @@ export function parseStatus(raw: string): ParsedStatus {
       codes = entry.slice(2, 4);
       filePath = afterFields(entry, 10);
     } else {
-      continue; // "!" ignored entries are never requested
+      continue;
     }
     if (!filePath) continue;
 
@@ -284,11 +250,6 @@ function parseBranches(raw: string): RepoState['branches'] {
 
 const nulPaths = (raw: string) => raw.split('\0').filter(Boolean);
 
-/**
- * Explorer files from one `ls-files -t --cached --others` listing, where each
- * entry is "<tag> <path>" and the tag "?" marks an untracked file (Git Pilot
- * listed tracked and all files in two separate calls).
- */
 export function buildFiles(
   lsFilesRaw: string,
   uploadedRaw: string,
@@ -297,7 +258,6 @@ export function buildFiles(
   const uploaded = new Set(nulPaths(uploadedRaw));
   const changeByPath = new Map(changes.map((change) => [change.path, change]));
 
-  // A conflicted path is listed once per stage; the Map dedupes it.
   const tracked = new Map<string, boolean>();
   for (const entry of nulPaths(lsFilesRaw)) {
     const filePath = entry.slice(2);
@@ -315,7 +275,6 @@ export function buildFiles(
   };
 }
 
-/** `git config --get-regexp` output; the last value wins, as with `git config --get`. */
 function parseIdentity(raw: string): RepoState['identity'] {
   const identity = { name: '', email: '' };
   for (const line of raw.split(/\r?\n/)) {
@@ -325,7 +284,6 @@ function parseIdentity(raw: string): RepoState['identity'] {
   return identity;
 }
 
-/** `git remote -v` → remotes in listing order ("name\turl (fetch|push)"). */
 export function parseRemotes(raw: string): RepoState['remotes'] {
   const byName = new Map<string, { name: string; fetchUrl: string; pushUrl: string }>();
   for (const line of raw.split(/\r?\n/)) {
@@ -344,13 +302,7 @@ export async function getRepoState(folder: string): Promise<RepoState> {
   return readState(await resolveRepoRoot(folder));
 }
 
-/** State of a repository whose root is already resolved. */
 async function readState(root: string): Promise<RepoState> {
-  // One parallel round of as few git calls as possible. Each spawn costs
-  // ~0.1–0.2 s on Windows and concurrent spawns barely overlap, so the count
-  // is what matters: Git Pilot's 12+ calls in dependent rounds took ~2 s per
-  // refresh; these 7 take well under half that. `@{u}` resolves the upstream
-  // inside git; an empty result just means there isn't one.
   const [statusRaw, commitsRaw, branchesRaw, remotesRaw, identityRaw, lsFilesRaw, uploadedRaw] = await Promise.all([
     runGit(STATUS_ARGS, root),
     optionalGit(['log', '-40', `--pretty=format:%H${FIELD}%h${FIELD}%an${FIELD}%aI${FIELD}%s${RECORD}`], root),
@@ -369,10 +321,8 @@ async function readState(root: string): Promise<RepoState> {
   ]);
 
   const status = parseStatus(statusRaw);
-  // v2 names the branch even before its first commit; empty means detached.
   const branch = status.head || DETACHED_HEAD;
   const branches = parseBranches(branchesRaw);
-  // An unborn branch has no ref yet, so for-each-ref doesn't list it.
   if (status.head && !branches.some((b) => b.name === status.head)) {
     branches.unshift({ name: status.head, current: true, upstream: '', lastCommitDate: '' });
   }
@@ -400,7 +350,6 @@ async function withState(root: string, message: string): Promise<OperationResult
   return { message, state: await readState(root) };
 }
 
-/** Validate a renderer-supplied selection of repository-relative paths. */
 function ensureFiles(root: string, files: unknown): string[] {
   if (!Array.isArray(files) || files.length === 0) throw new Error('Select at least one file first.');
   return files.map((file) => {
@@ -420,7 +369,6 @@ async function hasHead(root: string): Promise<boolean> {
 export async function stage(repo: string, files: string[]): Promise<OperationResult> {
   const root = await resolveRepoRoot(repo);
   const list = ensureFiles(root, files);
-  // -A so a deleted file's removal is staged too.
   await runForFiles(['add', '-A'], list, root);
   return withState(root, `Staged ${plural(list.length)}.`);
 }
@@ -428,8 +376,6 @@ export async function stage(repo: string, files: string[]): Promise<OperationRes
 export async function unstage(repo: string, files: string[]): Promise<OperationResult> {
   const root = await resolveRepoRoot(repo);
   const selection = ensureFiles(root, files);
-  // A staged rename is two index entries; unstaging only the new path would
-  // leave the old path's deletion staged.
   const { changes } = parseStatus(await runGit(['status', '--porcelain=v2', '-z', '--untracked-files=no'], root));
   const list = [
     ...new Set(
@@ -480,12 +426,10 @@ export async function fetchRepo(repo: string): Promise<OperationResult> {
 
 export async function pullRepo(repo: string): Promise<OperationResult> {
   const root = await resolveRepoRoot(repo);
-  // Fast-forward only: never an unexpected merge commit.
   await runGit(['pull', '--ff-only'], root, { timeout: 300_000 });
   return withState(root, 'Pulled the latest changes.');
 }
 
-/** Largest file in HEAD's tree at or over GitHub's 100 MB hard limit, if any. */
 export function findOversized(lsTree: string): { path: string; bytes: number } | undefined {
   return lsTree
     .split(/\r?\n/)
@@ -513,14 +457,12 @@ export async function pushRepo(repo: string): Promise<OperationResult> {
     await runGit(pushArgs, root, { timeout: 300_000 });
   } catch (error) {
     if (!(error instanceof Error) || !error.message.includes('[AUTH_REQUIRED]')) throw error;
-    // No stored credential: sign in through Git Credential Manager, then retry once.
     await signIn(root);
     await runGit(pushArgs, root, { timeout: 300_000 });
   }
   return withState(root, 'Changes pushed successfully.');
 }
 
-/** A branch name as the user typed it, checked by git and kept from parsing as an option. */
 async function checkBranchName(root: string, raw: unknown, what = 'a branch name'): Promise<string> {
   const name = String(raw ?? '').trim();
   if (!name) throw new Error(`Enter ${what}.`);
@@ -627,7 +569,6 @@ export async function authInfo(): Promise<{
   try {
     credentialManagerVersion = (await runGit(['credential-manager', '--version'], undefined, { timeout: 10_000 })).trim();
   } catch {
-    // Git can still authenticate through another configured helper.
   }
   return {
     credentialManagerInstalled: Boolean(credentialManagerVersion || /manager/i.test(helper)),
@@ -643,8 +584,6 @@ export async function signIn(repo: string): Promise<OperationResult> {
   if (!remote) throw new Error('Add a remote first so Git Studio knows which service to sign in to.');
   const url = remote.fetchUrl.toLowerCase();
 
-  // Git Credential Manager opens the browser / Windows sign-in UI itself and
-  // stores the result in Windows Credential Manager — nothing passes through here.
   if (url.includes('github.com')) {
     await runGit(['credential-manager', 'github', 'login'], root, { timeout: 300_000 });
   } else if (url.includes('gitlab.com')) {
@@ -655,7 +594,6 @@ export async function signIn(repo: string): Promise<OperationResult> {
   return withState(root, 'Authentication completed. Git stores the credential securely in Windows Credential Manager.');
 }
 
-/** Folder name git would pick for a clone URL. */
 export function inferCloneName(url: string): string {
   return url.replace(/[\\/]+$/, '').split(/[\\/:]/).pop()?.replace(/\.git$/i, '') || 'repository';
 }
@@ -677,7 +615,6 @@ export async function cloneRepository(url: string, parent: string, requestedName
     const entries = await fs.readdir(destination).catch(() => ['?']);
     if (entries.length) throw new Error(`${name} already exists in that folder and is not empty.`);
   }
-  // `--` so the URL can never be read as an option.
   await runGit(['clone', '--', cleanUrl, name], parent, { timeout: 600_000 });
   return getRepoState(destination);
 }

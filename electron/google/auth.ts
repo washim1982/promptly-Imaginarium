@@ -1,23 +1,3 @@
-// Google sign-in for the chat sidebar's Email and Google Drive sections.
-//
-// OAuth 2.0 for installed apps, as Google recommends for desktop clients:
-// the consent screen opens in the user's own browser (never an embedded
-// window, which Google blocks), the redirect comes back to a one-shot
-// listener on 127.0.0.1, and the code exchange is protected with PKCE and a
-// random `state`.
-//
-// Only read-only scopes are requested. The refresh token is encrypted with
-// Electron's safeStorage (DPAPI on Windows, bound to the Windows user) and never
-// leaves the main process; the renderer only ever sees the account's address.
-//
-// The OAuth client (ID + secret) belongs to the user's own Google Cloud project
-// — see README "Google account (Email & Drive)". For a Desktop-app client
-// Google documents the secret as not confidential, but it is still kept out of
-// the renderer.
-//
-// Connecting (and using) a Google account requires the optional Auth0 app
-// login (electron/auth0/). The connected account is tied to the Auth0 user who
-// connected it: another user logging in on this PC never sees that mail.
 
 import { app, safeStorage, shell } from 'electron';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -45,24 +25,18 @@ interface StoredAccount {
   email: string;
   refreshToken: string;
   scopes: string[];
-  /** Auth0 `sub` of the app user who connected this Google account. */
   ownerSub?: string;
 }
 
 export interface GoogleStatus {
-  /** An OAuth client ID + secret is set (in the app or via environment). */
   configured: boolean;
-  /** Where the client came from — the environment wins over saved settings. */
   clientSource: 'env' | 'saved' | null;
-  /** Last characters of the client ID, to recognise it without showing it all. */
   clientIdHint: string;
   connected: boolean;
   email: string;
   gmail: boolean;
   drive: boolean;
-  /** False when Windows can't encrypt the token; sign-in then lasts one session. */
   canPersist: boolean;
-  /** The Auth0 app login this feature requires. */
   appLoggedIn: boolean;
 }
 
@@ -71,7 +45,6 @@ const LOGIN_REQUIRED = 'Log in to OMNI-STUDIO (Auth0) before using Gmail and Goo
 const clientFile = () => path.join(app.getPath('userData'), 'google-oauth-client.json');
 const accountFile = () => path.join(app.getPath('userData'), 'google-account.bin');
 
-// ---- client configuration ---------------------------------------------------------
 
 async function loadClient(): Promise<{ client: ClientConfig; source: 'env' | 'saved' } | null> {
   const envId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim();
@@ -83,7 +56,6 @@ async function loadClient(): Promise<{ client: ClientConfig; source: 'env' | 'sa
       return { client: { clientId: saved.clientId, clientSecret: saved.clientSecret }, source: 'saved' };
     }
   } catch {
-    /* not configured */
   }
   return null;
 }
@@ -103,18 +75,15 @@ export async function saveClient(input: { clientId?: unknown; clientSecret?: unk
   const previous = await loadClient();
   await mkdir(app.getPath('userData'), { recursive: true });
   await writeFile(clientFile(), JSON.stringify(client, null, 2), 'utf8');
-  // A different client can't refresh the old client's tokens.
   if (previous?.client.clientId !== client.clientId) await forgetAccount();
 }
 
 export async function clearClient(): Promise<void> {
   await disconnect();
-  // Also drop an account that belongs to a user who isn't logged in now.
   await forgetAccount();
   await rm(clientFile(), { force: true });
 }
 
-// ---- stored account ----------------------------------------------------------------
 
 let account: StoredAccount | null = null;
 let accountLoaded = false;
@@ -136,8 +105,6 @@ async function loadAccount(): Promise<StoredAccount | null> {
 async function storeAccount(next: StoredAccount): Promise<void> {
   account = next;
   accountLoaded = true;
-  // Without OS encryption the token is kept for this session only — never
-  // written to disk in plain text.
   if (!safeStorage.isEncryptionAvailable()) return;
   await mkdir(app.getPath('userData'), { recursive: true });
   await writeFile(accountFile(), safeStorage.encryptString(JSON.stringify(next)));
@@ -150,16 +117,10 @@ async function forgetAccount(): Promise<void> {
   await rm(accountFile(), { force: true });
 }
 
-// A cached access token belongs to whoever was logged in when it was issued.
 onUserChange(() => {
   accessToken = null;
 });
 
-/**
- * The stored Google account, if it belongs to the Auth0 user logged in now.
- * An account saved before the Auth0 login existed is adopted by the first user
- * to log in; one connected by a different user is forgotten.
- */
 async function activeAccount(): Promise<StoredAccount | null> {
   const user = await currentUser();
   if (!user) return null;
@@ -192,7 +153,6 @@ export async function status(): Promise<GoogleStatus> {
   };
 }
 
-// ---- sign-in -----------------------------------------------------------------------
 
 let pendingSignIn: { cancel: () => void } | null = null;
 
@@ -229,8 +189,6 @@ export async function connect(): Promise<GoogleStatus> {
 
   const { verifier, challenge } = pkcePair();
   const state = randomToken();
-  // Port 0: the OS picks a free port. Google accepts any loopback port for
-  // Desktop-app clients.
   const { server, port, code } = await listenForCode({
     expectedState: state,
     port: 0,
@@ -252,8 +210,8 @@ export async function connect(): Promise<GoogleStatus> {
       code_challenge: challenge,
       code_challenge_method: 'S256',
       state,
-      access_type: 'offline', // a refresh token, so sign-in survives restarts
-      prompt: 'consent', // re-issue the refresh token on reconnect
+      access_type: 'offline',
+      prompt: 'consent',
       include_granted_scopes: 'true',
     }).toString();
     await shell.openExternal(url.toString());
@@ -269,14 +227,12 @@ export async function connect(): Promise<GoogleStatus> {
     });
     if (!tokens.refresh_token) throw new Error('Google did not return a refresh token. Remove the app from your Google account’s third-party access and connect again.');
 
-    // Google's consent screen lets people untick individual scopes.
     const granted = (tokens.scope ?? '').split(/\s+/).filter(Boolean);
     if (!granted.includes(SCOPES.gmail) && !granted.includes(SCOPES.drive)) {
       throw new Error('Neither Gmail nor Drive access was granted. Connect again and tick both boxes.');
     }
     accessToken = { token: tokens.access_token, expiresAt: Date.now() + tokens.expires_in * 1000 };
     const email = await fetchEmail(tokens.access_token, granted);
-    // The user could have logged out of Auth0 while the browser was open.
     if ((await currentUser())?.sub !== owner.sub) throw new Error(LOGIN_REQUIRED);
     await storeAccount({ email, refreshToken: tokens.refresh_token, scopes: granted, ownerSub: owner.sub });
     return status();
@@ -306,7 +262,6 @@ async function fetchEmail(token: string, scopes: string[]): Promise<string> {
 export async function disconnect(): Promise<GoogleStatus> {
   const acct = await activeAccount();
   if (acct) {
-    // Revoke at Google too, so the token is dead even if a copy survived.
     await httpFetch(REVOKE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -319,7 +274,6 @@ export async function disconnect(): Promise<GoogleStatus> {
   return status();
 }
 
-// ---- authorised requests ---------------------------------------------------------------
 
 async function currentToken(forceRefresh = false): Promise<string> {
   if (!(await currentUser())) throw new Error(LOGIN_REQUIRED);
@@ -339,7 +293,6 @@ async function currentToken(forceRefresh = false): Promise<string> {
     return tokens.access_token;
   } catch (err) {
     if ((err as { code?: string }).code === 'invalid_grant') {
-      // Revoked, expired (Testing-mode apps: after 7 days) or password changed.
       await forgetAccount();
       throw new Error('Your Google sign-in has expired or was revoked. Connect the account again.');
     }
@@ -356,7 +309,6 @@ export async function requireScope(scope: keyof typeof SCOPES): Promise<void> {
   }
 }
 
-/** GET a Google API URL as the signed-in user; one retry with a fresh token on 401. */
 export async function googleGet(url: string, as: 'json' | 'text' | 'bytes' = 'json', maxBytes = 25 * 1024 * 1024): Promise<unknown> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await currentToken(attempt > 0);

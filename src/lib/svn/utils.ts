@@ -1,8 +1,6 @@
-// Pure helpers from SVN Studio's web/client/src/utils/*, merged into one module.
 
 import type { SvnItemStatus, SvnTreeNode } from './types';
 
-// ---- tree ------------------------------------------------------------------------
 
 export interface FlatEntry {
   path: string;
@@ -17,18 +15,12 @@ export function flattenTree(node: SvnTreeNode | null, out: FlatEntry[] = []): Fl
   return out;
 }
 
-/** Folders first, then alphabetical — the order every tree view uses. */
 export function sortNodes(nodes: SvnTreeNode[]): SvnTreeNode[] {
   return nodes
     .slice()
     .sort((a, b) => Number(b.isDirectory) - Number(a.isDirectory) || a.name.localeCompare(b.name));
 }
 
-/**
- * Keep a node only if it changed itself or is an ancestor of something that
- * did — so the commit panel shows real folder structure for context without
- * listing every untouched file in the working copy.
- */
 export function pruneToChanges(node: SvnTreeNode): SvnTreeNode | null {
   const children = (node.children ?? [])
     .map(pruneToChanges)
@@ -37,21 +29,12 @@ export function pruneToChanges(node: SvnTreeNode): SvnTreeNode | null {
   return null;
 }
 
-/**
- * Paths in this subtree that changed themselves — valid commit/revert targets.
- * Includes the working-copy root ("") when it has a property change of its own.
- */
 export function collectChangedPaths(node: SvnTreeNode, out: string[] = []): string[] {
   if (node.status !== 'normal') out.push(node.path);
   node.children?.forEach((child) => collectChangedPaths(child, out));
   return out;
 }
 
-/**
- * Changes to pre-select for commit: everything svn already tracks. Unversioned
- * items are left unticked, as in TortoiseSVN — committing adds them, so
- * pre-selecting would quietly commit build output and stray files.
- */
 export function defaultCommitSelection(node: SvnTreeNode, out: string[] = []): string[] {
   if (node.status !== 'normal' && node.status !== 'unversioned') out.push(node.path);
   node.children?.forEach((child) => defaultCommitSelection(child, out));
@@ -70,7 +53,6 @@ export function countStatuses(node: SvnTreeNode | null): { changed: number; conf
   return { changed, conflicted };
 }
 
-// ---- status styling ------------------------------------------------------------------
 
 export const STATUS_ICON: Record<string, string> = {
   modified: '●',
@@ -107,7 +89,6 @@ export function nameClass(status: SvnItemStatus | string): string {
   }
 }
 
-// ---- languages ----------------------------------------------------------------------
 
 const LANGUAGES: Record<string, [display: string, monaco: string]> = {
   ts: ['TypeScript', 'typescript'],

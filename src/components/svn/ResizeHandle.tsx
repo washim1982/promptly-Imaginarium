@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface ResizeHandleProps {
-  /** Current width of the panel this handle controls. */
   width: number;
   onResize: (width: number) => void;
   onReset: () => void;
-  /** "left": the panel is left of the handle (dragging right grows it); "right": the opposite. */
   side: 'left' | 'right';
   label: string;
 }
@@ -17,8 +15,6 @@ export function ResizeHandle({ width, onResize, onReset, side, label }: ResizeHa
   const cleanupRef = useRef<(() => void) | null>(null);
   const direction = side === 'left' ? 1 : -1;
 
-  // Move/up are tracked on window rather than via pointer capture, so a fast
-  // drag that outruns the 10px handle still resizes and still ends cleanly.
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     e.preventDefault();

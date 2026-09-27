@@ -1,7 +1,3 @@
-// Optional app login (Auth0): the account area at the bottom of the chat
-// sidebar, the "log in first" card the Email / Drive sections show, and the
-// Auth0 setup dialog. Logging in or out also refreshes the Google status,
-// since Google access depends on who is logged in.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
@@ -11,12 +7,10 @@ import { openExternal } from '../../../lib/desktop';
 import { refreshGoogle } from './useGoogle';
 import { panelButton, primaryButton } from './styles';
 
-// ---- shared status store ------------------------------------------------------------
 
 let current: Auth0Status | null = null;
 let loggingIn = false;
 let loginError = '';
-/** Which Log in button started the attempt, so its error shows once, there. */
 let loginOrigin: 'account' | 'gate' = 'account';
 let started = false;
 const listeners = new Set<() => void>();
@@ -41,7 +35,6 @@ export function useAuth0() {
   useEffect(() => {
     if (started) return;
     started = true;
-    // Show the stored session at once, then confirm it with Auth0 in the background.
     void auth0Api.status().then(set).then(() => auth0Api.verify().then(set)).catch(() => {});
   }, []);
   return { status, busy, error, origin };
@@ -66,7 +59,6 @@ export async function logout(): Promise<void> {
   set(await auth0Api.logout());
 }
 
-// ---- setup dialog ---------------------------------------------------------------------
 
 const inputClass =
   'w-full rounded-lg border border-white/10 bg-black/25 px-2.5 py-2 text-[12.5px] text-white placeholder:text-white/30 focus:border-[var(--color-neon)]/50 focus:outline-none';
@@ -183,9 +175,7 @@ export function Auth0SetupDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ---- sidebar account area ---------------------------------------------------------------
 
-/** Bottom of the expanded sidebar: Log in (optional) or the logged-in user. */
 export function AccountArea() {
   const { status, busy, error, origin } = useAuth0();
   const [setupOpen, setSetupOpen] = useState(false);
@@ -270,7 +260,6 @@ export function AccountArea() {
   );
 }
 
-/** Collapsed-rail version: avatar or a log-in icon. */
 export function RailAccount({ onExpand }: { onExpand: () => void }) {
   const { status } = useAuth0();
   if (!status) return null;
@@ -295,7 +284,6 @@ export function RailAccount({ onExpand }: { onExpand: () => void }) {
   );
 }
 
-/** Shown by the Email / Drive sections until the user logs in. */
 export function LoginRequired({ what }: { what: string }) {
   const { status, busy, error, origin } = useAuth0();
   const [setupOpen, setSetupOpen] = useState(false);

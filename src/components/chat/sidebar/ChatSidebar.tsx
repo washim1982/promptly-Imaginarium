@@ -1,7 +1,3 @@
-// The chat page's left sidebar: New chat, then four sections — Email, Google
-// Drive, Workspace, History — whose content fills the space below the list.
-// Collapses to an icon rail; the open section and collapsed state are
-// remembered per viewer.
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { FolderOpen, HardDrive, History, Mail, PanelLeftClose, PanelLeftOpen, SquarePen } from 'lucide-react';
@@ -22,9 +18,7 @@ const WIDTH_KEY = 'imaginarium.chatSidebar.width';
 const DEFAULT_WIDTH = 288;
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 560;
-/** Dragging narrower than this collapses to the rail instead. */
 const COLLAPSE_AT = 190;
-/** The chat itself always keeps at least this much room. */
 const CHAT_MIN = 420;
 
 function clampWidth(value: number): number {
@@ -43,7 +37,6 @@ function write(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* per-session only */
   }
 }
 
@@ -72,7 +65,6 @@ export default function ChatSidebar() {
     write(WIDTH_KEY, String(clamped));
   }, []);
 
-  // Shrinking the window must not push the chat out of the way.
   useEffect(() => {
     const onResize = () => setWidthState((w) => clampWidth(w));
     window.addEventListener('resize', onResize);
@@ -189,7 +181,6 @@ export default function ChatSidebar() {
         onResize={setWidth}
         onReset={() => setWidth(DEFAULT_WIDTH)}
         onCollapse={(restoreWidth) => {
-          // Keep the width the user had, so expanding returns to it.
           setWidth(restoreWidth);
           setCollapsed(true);
         }}

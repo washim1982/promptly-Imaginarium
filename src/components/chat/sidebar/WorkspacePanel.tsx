@@ -1,6 +1,3 @@
-// Sidebar → Workspace: the folder the agent works in (the same one the
-// composer's workspace chip sets), as a browsable tree. Files can be previewed
-// and attached to a message.
 
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, FileText, Folder, FolderOpen, FolderPlus, Loader2, Paperclip, RefreshCw, X } from 'lucide-react';
@@ -46,7 +43,6 @@ export function WorkspacePanel() {
     }
   }, []);
 
-  // A new workspace starts from a fresh tree.
   useEffect(() => {
     setChildren({});
     setExpanded(new Set());

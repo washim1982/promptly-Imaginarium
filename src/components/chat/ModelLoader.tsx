@@ -2,12 +2,6 @@ import { useLlm } from '../../state/LlmContext';
 import { SUGGESTED_MODELS, repoUrl } from '../../lib/models';
 import { formatBytes, openExternal, shortenPath } from '../../lib/desktop';
 
-// Shown when the GPU is available but no model is loaded yet (status: idle |
-// downloading | reading | initializing | error).
-//
-// Desktop difference from the web build: there are no fixed model slots. The
-// library holds any number of .litertlm files, so this is a picker over
-// whatever the user has added, with an empty state that leads with Browse.
 export default function ModelLoader() {
   const {
     status,
@@ -72,7 +66,7 @@ export default function ModelLoader() {
         </div>
       ) : (
         <div className="mt-6 flex flex-col gap-3">
-          {/* The library. Clicking a row selects it; the button below loads it. */}
+          {}
           {!empty && (
             <div className="max-h-64 space-y-1.5 overflow-y-auto text-left">
               {models.map((m) => {
@@ -132,7 +126,7 @@ export default function ModelLoader() {
             {empty ? 'Browse for a .litertlm file…' : '＋ Add another model…'}
           </button>
 
-          {/* Files the picker refused, with the reason. */}
+          {}
           {rejected.length > 0 && (
             <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-left">
               {rejected.map((r) => (

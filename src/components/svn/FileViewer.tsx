@@ -29,21 +29,16 @@ export function FileViewer({
 }: FileViewerProps) {
   const [mode, setMode] = useState<'source' | 'diff'>('source');
   const language = useMemo(() => monacoLanguageFromPath(path), [path]);
-  // Keyboard handlers registered on mount must see the latest props.
   const saveRef = useRef({ onSave, editable });
   saveRef.current = { onSave, editable };
 
-  // Follow the app's accent colour live.
   useEffect(() => applyMonacoTheme(accent), [accent]);
 
-  // A file with no local changes has nothing to diff; don't strand the user on
-  // an empty Diff tab when switching to one.
   useEffect(() => {
     if (!diff) setMode('source');
   }, [diff, path]);
 
   const handleMount: OnMount = (editor) => {
-    // New vs SVN Studio: Ctrl+S saves when editing is enabled.
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       if (saveRef.current.editable) saveRef.current.onSave();
     });
@@ -132,10 +127,6 @@ export function FileViewer({
   );
 }
 
-/**
- * Unified diff, coloured by line. SVN Studio showed the raw patch as plain text
- * inside Monaco; this is the same content, readable at a glance.
- */
 function DiffView({ diff }: { diff: string }) {
   const lines = diff.replace(/\n$/, '').split('\n');
   return (

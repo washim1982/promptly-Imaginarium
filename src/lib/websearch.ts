@@ -1,8 +1,3 @@
-// Web search setup (Settings → Web search) and the desktop search client.
-//
-// The API key lives in the main process, encrypted with safeStorage. Nothing
-// here ever holds it after the save call returns — `status.masked` is all the
-// renderer gets back.
 
 import { desktop, requireDesktop } from './desktop';
 import type { SearchResult } from './search';
@@ -30,7 +25,6 @@ interface SearchBridge {
 
 const bridge = () => (requireDesktop() as unknown as { search: SearchBridge }).search;
 
-/** Undefined in a plain browser build, where search goes through /api/search. */
 export const hasSearchBridge = (): boolean =>
   Boolean((desktop as unknown as { search?: SearchBridge } | undefined)?.search);
 
@@ -42,7 +36,6 @@ export const searchApi = {
   query: (query: string, maxResults?: number) => bridge().query(query, maxResults),
 };
 
-/** How Settings describes the backend a search would use right now. */
 export function describeProvider(status: SearchStatus | null): string {
   if (!status) return 'Checking…';
   return `Keenable (${status.keenableSource ? status.keenableMasked : 'keyless'}) · ${status.source ? 'Tavily fallback ' + status.masked : 'Tavily fallback not configured'}`;

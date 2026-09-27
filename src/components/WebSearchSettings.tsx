@@ -1,8 +1,3 @@
-// Settings → Web search: paste a Tavily API key, test it, and choose whether
-// plain chat may search on its own.
-//
-// Mirrors the Auth0 setup dialog: the secret goes straight to the main process,
-// comes back only masked, and the panel never keeps it in state after a save.
 
 import { useEffect, useState } from 'react';
 import { Check, ExternalLink, Loader2, Trash2 } from 'lucide-react';
@@ -45,13 +40,12 @@ export default function WebSearchSettings() {
   const save = () =>
     run('save', async () => {
       setStatus(await searchApi.saveKey(key));
-      setKey(''); // the panel does not keep the secret around
+      setKey('');
       return 'Key saved.';
     });
 
   const test = () =>
     run('test', async () => {
-      // Test what is typed, or the key already stored if the box is empty.
       if (key.trim()) {
         await searchApi.verifyKey(key);
         return 'That key works.';

@@ -1,10 +1,7 @@
-// Git Pilot's window.gitPilot API, re-pointed at window.imaginarium.git. The
-// method names and shapes match the original so the ported UI reads the same.
 
 import { cleanError, requireDesktop } from '../desktop';
 import type { AuthInfo, OperationResult, RecentRepo, RepoIdentity, RepoState } from './types';
 
-/** One credential the scan found. The value itself never leaves the main process. */
 export interface Finding {
   id: string;
   rule: string;
@@ -12,7 +9,6 @@ export interface Finding {
   where: 'worktree' | 'history' | 'staged';
   path: string;
   line: number;
-  /** The value with its middle replaced by dots. */
   masked: string;
   commit?: string;
   blob?: string;
@@ -28,7 +24,6 @@ export interface ScanResult {
   secretCount: number;
 }
 
-/** A line the rules didn't match, for the local model to judge. */
 export interface Candidate {
   id: string;
   path: string;
@@ -54,6 +49,39 @@ export interface RemovalSummary {
   tagsSkipped: string[];
   signaturesDropped: number;
   historyRewritten: boolean;
+}
+
+export type CommentKind = 'directive' | 'license' | 'sensitive' | 'dead-code' | 'task' | 'doc' | 'prose';
+
+export interface CommentFinding {
+  id: string;
+  file: string;
+  line: number;
+  kind: CommentKind;
+  locked: boolean;
+  preview: string;
+  lines: number;
+  chars: number;
+  detail?: string;
+}
+
+export interface CommentScanResult {
+  findings: CommentFinding[];
+  filesScanned: number;
+  filesWithComments: number;
+  totalComments: number;
+  totalChars: number;
+  sourceChars: number;
+  skipped: { unsupported: number; large: number; unreadable: number; minified: number };
+  truncated: boolean;
+}
+
+export interface CommentRemoval {
+  filesChanged: string[];
+  removed: number;
+  stale: number;
+  refused: number;
+  linesRemoved: number;
 }
 
 interface GitBridge {
@@ -84,6 +112,8 @@ interface GitBridge {
   openCreateRemote(repo: string): Promise<void>;
   scanSecrets(repo: string): Promise<ScanResult>;
   scanStaged(repo: string): Promise<ScanResult>;
+  scanComments(repo: string): Promise<CommentScanResult>;
+  removeComments(repo: string, ids: string[]): Promise<{ result: CommentRemoval; state: RepoState }>;
   scanCandidates(repo: string, scanId?: string): Promise<CandidateResult>;
   removeSecrets(repo: string, findingIds: string[], scanId?: string): Promise<{ summary: RemovalSummary; state: RepoState | null; warning?: string }>;
   forcePush(repo: string, remote: string, branch: string): Promise<{ message: string; state: RepoState }>;
@@ -93,11 +123,6 @@ function bridge(): GitBridge {
   return (requireDesktop() as unknown as { git: GitBridge }).git;
 }
 
-/**
- * Proxy every bridge call so it rejects with Electron's IPC prefix stripped
- * but Git Studio's [CODE] markers intact — the UI branches on those
- * (REMOTE_NOT_FOUND opens the recovery dialog) before hiding them.
- */
 export const gitApi: GitBridge = new Proxy({} as GitBridge, {
   get(_target, key: keyof GitBridge) {
     return async (...args: unknown[]) => {
@@ -110,7 +135,6 @@ export const gitApi: GitBridge = new Proxy({} as GitBridge, {
   },
 });
 
-/** What the user sees: the message without its [CODE] marker. */
 export function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return cleanError(message)

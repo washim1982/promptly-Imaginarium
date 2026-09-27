@@ -1,5 +1,3 @@
-// Sidebar → Google Drive: browse My Drive folder by folder or search all of
-// Drive, preview a file as text and attach it to the chat. Read-only.
 
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, FileText, Folder, Loader2, Paperclip, RefreshCw, Search } from 'lucide-react';
@@ -14,7 +12,6 @@ interface Crumb {
 }
 const ROOT: Crumb = { id: 'root', name: 'My Drive' };
 
-/** Drive content as plain text; PDFs go through the app's pdf.js. */
 async function contentText(c: DriveContent): Promise<string> {
   if (c.kind === 'text') return c.text;
   const { extractPdfText } = await import('../../../lib/pdf');
@@ -48,7 +45,6 @@ function Browser() {
     setLoading(true);
     setError('');
     try {
-      // A search covers all of Drive; browsing lists one folder.
       const res = await googleApi.listDrive(search, search ? undefined : folderId, pageToken);
       setFiles((prev) => (pageToken ? [...prev, ...res.files] : res.files));
       setNext(res.nextPageToken);

@@ -18,9 +18,7 @@ import {
 
 export interface FileTreeActions {
   onSelectFile: (path: string) => void;
-  /** Native picker: add files (kind "files") or a whole folder into targetFolder. */
   onUpload: (targetFolder: string, kind: 'files' | 'folder') => void;
-  /** Files dragged in from Windows Explorer and dropped on a folder. */
   onDropFiles: (targetFolder: string, files: FileList) => void;
   onCreateFile: (targetFolder: string) => void;
   onCreateFolder: (targetFolder: string) => void;
@@ -72,7 +70,6 @@ export function FileTree({ root, selectedPath, repoName, onRefresh, ...actions }
         </button>
       </div>
       {root ? (
-        // The root's children are listed directly — a "/" row adds nothing.
         sortNodes(root.children ?? []).map((child) => (
           <TreeNode
             key={child.path}

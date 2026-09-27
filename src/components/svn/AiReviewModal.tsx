@@ -33,7 +33,6 @@ export function AiReviewModal({ state, modelProgress, onClose, onStop, onOpenMod
   const [copied, setCopied] = useState(false);
   const busy = isBusy(state);
 
-  // One timer across the whole run (model load → context → generation).
   useEffect(() => {
     if (!busy) return;
     setElapsed(0);

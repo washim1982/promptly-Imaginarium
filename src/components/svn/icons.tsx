@@ -1,7 +1,3 @@
-// SVN Studio's icon set (components/icons.tsx). Sun/Moon are dropped — the app
-// has no light theme. File/Folder/Unlock are new: the original used emoji
-// (📁 📄 🔒) for these, which render in full colour and ignore the theme; these
-// inherit currentColor like everything else.
 
 import type { ReactNode, SVGProps } from 'react';
 

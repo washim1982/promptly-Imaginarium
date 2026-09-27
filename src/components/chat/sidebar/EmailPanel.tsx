@@ -1,5 +1,3 @@
-// Sidebar → Email: the connected Gmail inbox, searchable, with a preview that
-// attaches a message to the chat. Read-only.
 
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Paperclip, RefreshCw, Search } from 'lucide-react';
@@ -23,7 +21,6 @@ function toPreview(m: MailMessage): PreviewState {
   };
 }
 
-/** What the model gets for an email: headers, then the body. */
 function emailText(m: MailMessage): string {
   return [
     `From: ${m.from}`,

@@ -1,4 +1,3 @@
-// Read an email / Drive file / workspace file before attaching it to chat.
 
 import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -8,11 +7,9 @@ import { primaryButton, panelButton } from './styles';
 
 export interface PreviewState {
   title: string;
-  /** Lines of metadata under the title (From / To / type / path…). */
   meta: { label: string; value: string }[];
   body: string;
   mono?: boolean;
-  /** "Open in Gmail" / "Open in Drive". */
   link?: { label: string; url: string };
 }
 
@@ -37,8 +34,6 @@ export function PreviewModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Portalled to <body>: the sidebar's backdrop-filter would otherwise become
-  // the containing block for this fixed overlay.
   return createPortal(
     <div className="fixed inset-0 z-[60] grid place-items-center bg-black/55 p-6 backdrop-blur-sm" onMouseDown={onClose}>
       <section

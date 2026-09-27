@@ -3,7 +3,6 @@ import { KIND_LABEL, type AttachmentMeta } from '../../lib/attachments';
 
 const ICONS = { email: Mail, drive: HardDrive, file: FileText } as const;
 
-/** An attached email / Drive file / workspace file, in the composer or on a sent message. */
 export default function AttachmentChip({ attachment, onRemove }: { attachment: AttachmentMeta; onRemove?: () => void }) {
   const Icon = ICONS[attachment.kind];
   const tip = `${KIND_LABEL[attachment.kind]}: ${attachment.title}${attachment.subtitle ? ` — ${attachment.subtitle}` : ''}${

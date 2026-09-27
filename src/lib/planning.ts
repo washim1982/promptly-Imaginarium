@@ -10,7 +10,6 @@ export function calendarUrl(plan: PlanDetails, text: string): string {
 }
 export function calendarFile(plan: PlanDetails, text: string): string {
   const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r/g, '');
-  // Fold by UTF-8 bytes, without splitting a Unicode character (RFC 5545).
   const fold = (s: string) => {
     let line = '', length = 0, out = '';
     for (const c of s) {

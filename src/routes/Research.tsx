@@ -36,7 +36,6 @@ export default function Research() {
   const [deepVerify, setDeepVerify] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Live state mirrored from the engine's events.
   const [question, setQuestion] = useState('');
   const [plan, setPlan] = useState<{ raw: string; done: boolean }>({ raw: '', done: false });
   const [todos, setTodos] = useState<Todo[]>([]);
@@ -214,10 +213,8 @@ export default function Research() {
     URL.revokeObjectURL(url);
   }
 
-  // Group task cells by round for rendering.
   const rounds = Array.from(new Set(todos.map((t) => t.round))).sort((a, b) => a - b);
 
-  // ---- Gates -------------------------------------------------------------
   if (status === 'checking-gpu') {
     return (
       <Wrap>
@@ -241,7 +238,6 @@ export default function Research() {
 
   const doneCount = todos.filter((t) => t.status === 'done').length;
 
-  // ---- Main UI -----------------------------------------------------------
   return (
     <div className="mx-auto flex h-full w-full max-w-4xl flex-col">
       <div className="px-4 pt-5">
@@ -369,7 +365,7 @@ export default function Research() {
         </div>
       </div>
 
-      {/* Workspace */}
+      {}
       <div className="flex-1 space-y-5 overflow-y-auto px-4 py-5">
         {todos.length === 0 && !running && (
           <div className="mono mt-16 text-center text-xs text-white/30">
@@ -378,7 +374,7 @@ export default function Research() {
           </div>
         )}
 
-        {/* Plan: research question + sub-question checklist */}
+        {}
         {(plan.raw || todos.length > 0) && (
           <div className="glass rounded-xl p-4">
             <div className="mono mb-2 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">
@@ -427,7 +423,7 @@ export default function Research() {
           </div>
         )}
 
-        {/* Activity by round */}
+        {}
         {rounds.map((round) => {
           const roundTodos = todos.filter((t) => t.round === round);
           const review = reviews.find((r) => 2 + r.round === round);
@@ -456,10 +452,10 @@ export default function Research() {
           );
         })}
 
-        {/* Virtual file system */}
+        {}
         {files.length > 0 && <FileSystem files={files} />}
 
-        {/* Final integrated report */}
+        {}
         {final && (
           <div className="glass rounded-xl p-5">
             <div className="mono mb-3 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">

@@ -31,7 +31,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* App background: solid dark, no pattern. */
 .bg-imaginarium {
   position: fixed;
   inset: 0;
@@ -58,16 +57,9 @@ body {
   text-transform: uppercase;
 }
 
-/* ---- Desktop window chrome -------------------------------------------- */
 
-/* The app's own header doubles as the title bar: dragging it moves the window.
-   Interactive children opt back out, or they'd be undraggable *and* unclickable. */
 .app-titlebar {
   -webkit-app-region: drag;
-  /* Electron draws the Windows caption buttons on top of this header
-     (titleBarOverlay). `titlebar-area-*` reports the region NOT covered by
-     them, so this reserves exactly the right gap — and collapses to a plain
-     1.5rem when the env vars are absent (i.e. running in a normal browser). */
   padding-right: calc(
     100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 1.5rem
   );
@@ -77,20 +69,16 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* Chrome shouldn't feel like a web page: no text selection on the title bar or
-   nav. Content — messages, markdown, code blocks — stays selectable. */
 .app-titlebar {
   user-select: none;
 }
 
-/* Invisible scrollbars — content still scrolls, but no visible track/thumb,
-   so the page appears to float. */
 * {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* old Edge / IE */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 *::-webkit-scrollbar {
   width: 0;
   height: 0;
-  display: none; /* Chrome / Safari / Edge */
+  display: none;
 }

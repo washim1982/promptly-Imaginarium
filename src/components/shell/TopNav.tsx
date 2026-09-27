@@ -14,11 +14,8 @@ export default function TopNav({
   onOpenSettings: () => void;
 }) {
   return (
-    // `app-titlebar` makes this header the window's drag region and reserves
-    // room on the right for the Windows caption buttons that Electron paints
-    // over it (see titleBarOverlay in electron/main.ts).
     <header className="app-titlebar flex h-[68px] shrink-0 items-center justify-between pl-6">
-      {/* Logo → workspace */}
+      {}
       <Link
         to="/chat"
         className="glass neon-glow flex items-center gap-2 rounded-xl px-4 py-2 transition hover:brightness-110"
@@ -29,7 +26,7 @@ export default function TopNav({
         </span>
       </Link>
 
-      {/* Center nav */}
+      {}
       <nav className="hidden items-center gap-1 md:flex">
         {LINKS.map((l) => (
           <NavLink
@@ -48,7 +45,7 @@ export default function TopNav({
         ))}
       </nav>
 
-      {/* Settings */}
+      {}
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenSettings}

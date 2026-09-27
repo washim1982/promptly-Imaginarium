@@ -9,16 +9,12 @@ import About from './routes/About';
 import Privacy from './routes/Privacy';
 import Planning from './routes/Planning';
 
-// pdf.js is heavy; only load it when the PDF Tools route is visited.
 const PdfTools = lazy(() => import('./routes/PdfTools'));
-// Likewise Monaco (several MB) for the SVN Studio tab.
 const SvnStudio = lazy(() => import('./routes/SvnStudio'));
 const GitStudio = lazy(() => import('./routes/GitStudio'));
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // SVN Studio and Git Studio are full-height workspaces; the app footer
-  // would just stack a second strip under them.
   const { pathname } = useLocation();
   const fullBleed = pathname.startsWith('/svn') || pathname.startsWith('/git');
 
@@ -36,8 +32,7 @@ export default function App() {
           }
         >
           <Routes>
-            {/* The desktop app opens straight into the workspace — the web
-                build's marketing landing page has no audience here. */}
+            {}
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/planning" element={<Planning />} />

@@ -4,7 +4,6 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 
-// Exercise IPC without changing real repositories or their history.
 const handlers = new Map();
 let sequence = 0;
 let removed = [];

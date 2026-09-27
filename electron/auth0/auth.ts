@@ -1,17 +1,3 @@
-// Optional app login with Auth0 (a "Native" application). Logging in is not
-// needed to use OMNI-STUDIO, but it is required before a Google account can be
-// connected for the chat sidebar's Email and Drive sections — and the
-// connected Google account belongs to the Auth0 user who connected it.
-//
-// Authorization Code + PKCE through the user's browser, redirecting back to a
-// fixed loopback URL that must be listed in the Auth0 application's "Allowed
-// Callback URLs" (Auth0 matches callback URLs exactly, port included). Native
-// apps are public clients: there is no client secret, and none is stored.
-//
-// The ID token arrives straight from the token endpoint over TLS, so it is
-// checked for issuer, audience, expiry and nonce (OIDC Core §3.1.3.7) rather
-// than signature. The refresh token is encrypted with safeStorage (Windows
-// DPAPI); the renderer only ever sees the profile.
 
 import { app, safeStorage, shell } from 'electron';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -55,9 +41,7 @@ interface Session {
 const clientFile = () => path.join(app.getPath('userData'), 'auth0-client.json');
 const sessionFile = () => path.join(app.getPath('userData'), 'auth0-session.bin');
 
-// ---- configuration -----------------------------------------------------------------
 
-/** "https://Tenant.us.auth0.com/" → "tenant.us.auth0.com". */
 export function normalizeDomain(raw: unknown): string {
   const domain = String(raw ?? '')
     .trim()
@@ -82,7 +66,6 @@ async function loadClient(): Promise<{ client: Auth0Client; source: 'env' | 'sav
     try {
       return { client: validateClient({ domain: process.env.AUTH0_DOMAIN, clientId: process.env.AUTH0_CLIENT_ID }), source: 'env' };
     } catch {
-      /* fall through to saved settings */
     }
   }
   try {
@@ -98,7 +81,6 @@ export async function saveClient(input: { domain?: unknown; clientId?: unknown }
   const previous = await loadClient();
   await mkdir(app.getPath('userData'), { recursive: true });
   await writeFile(clientFile(), JSON.stringify(client, null, 2), 'utf8');
-  // A session from another tenant/application doesn't carry over.
   if (previous && (previous.client.domain !== client.domain || previous.client.clientId !== client.clientId)) await forgetSession();
 }
 
@@ -107,14 +89,12 @@ export async function clearClient(): Promise<void> {
   await rm(clientFile(), { force: true });
 }
 
-// ---- session -------------------------------------------------------------------------
 
 let session: Session | null = null;
 let sessionLoaded = false;
 let verified = false;
 const listeners = new Set<() => void>();
 
-/** Called when the logged-in user changes (login, logout, expiry). */
 export function onUserChange(fn: () => void): void {
   listeners.add(fn);
 }
@@ -135,7 +115,7 @@ async function loadSession(): Promise<Session | null> {
 async function storeSession(next: Session): Promise<void> {
   session = next;
   sessionLoaded = true;
-  if (!safeStorage.isEncryptionAvailable()) return; // this run only; never plain text on disk
+  if (!safeStorage.isEncryptionAvailable()) return;
   await mkdir(app.getPath('userData'), { recursive: true });
   await writeFile(sessionFile(), safeStorage.encryptString(JSON.stringify(next)));
 }
@@ -149,7 +129,6 @@ async function forgetSession(): Promise<void> {
   if (had) notify();
 }
 
-/** The logged-in Auth0 user, or null. Used by the Google module as its gate. */
 export async function currentUser(): Promise<Auth0User | null> {
   return (await loadSession())?.user ?? null;
 }
@@ -168,7 +147,6 @@ export async function status(): Promise<Auth0Status> {
   };
 }
 
-// ---- tokens --------------------------------------------------------------------------
 
 interface TokenResponse {
   access_token?: string;
@@ -200,7 +178,6 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) as Record<string, unknown>;
 }
 
-/** OIDC claim checks for an ID token received directly from the token endpoint. */
 export function verifyIdToken(idToken: string, client: Auth0Client, nonce: string | null, now = Date.now()): Auth0User {
   const c = decodeJwtPayload(idToken);
   if (c.iss !== `https://${client.domain}/`) throw new Error('Auth0 ID token has the wrong issuer.');
@@ -217,7 +194,6 @@ export function verifyIdToken(idToken: string, client: Auth0Client, nonce: strin
   };
 }
 
-// ---- login / logout ------------------------------------------------------------------
 
 let pendingLogin: { cancel: () => void } | null = null;
 
@@ -290,8 +266,6 @@ export async function logout(): Promise<Auth0Status> {
   const s = await loadSession();
   const loaded = await loadClient();
   if (s?.refreshToken && loaded) {
-    // Revoke the refresh token so a copy of it is useless. Native apps are
-    // public clients, so client_id alone authenticates the request.
     await httpFetch(`https://${loaded.client.domain}/oauth/revoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -304,11 +278,6 @@ export async function logout(): Promise<Auth0Status> {
   return status();
 }
 
-/**
- * Confirm the stored session is still valid (once per run): refresh it, which
- * also rotates the refresh token when rotation is on. A revoked or expired
- * grant logs out; being offline does not.
- */
 export async function verifySession(): Promise<Auth0Status> {
   const s = await loadSession();
   const loaded = await loadClient();
@@ -326,7 +295,6 @@ export async function verifySession(): Promise<Auth0Status> {
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code === 'invalid_grant' || code === 'unauthorized_client') await forgetSession();
-    // Network trouble: keep the session and try again next time.
   }
   return status();
 }

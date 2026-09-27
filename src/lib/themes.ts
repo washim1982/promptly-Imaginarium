@@ -1,6 +1,3 @@
-// Visual theme = the app's accent / glow color. Applied by overriding the
-// --color-neon CSS variable (and deriving --color-neon-soft from it), so every
-// neon-glow, accent button, focus ring, and ambient gradient follows.
 
 export interface Theme {
   id: string;
@@ -30,7 +27,6 @@ export function normalizeHex(v: string): string {
   return t.startsWith('#') ? t : `#${t}`;
 }
 
-// Resolve the effective accent color from a preset id + optional custom hex.
 export function resolveAccent(
   themeId: string,
   customGlow: string | null,

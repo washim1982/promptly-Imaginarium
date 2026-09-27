@@ -1,14 +1,3 @@
-// OMNI-STUDIO desktop — main process.
-//
-// Three jobs:
-//   1. Serve the renderer over a custom `app://` scheme with COOP/COEP so the
-//      page is cross-origin isolated. LiteRT-LM needs SharedArrayBuffer, and
-//      `file://` can never be isolated — hence the protocol handler.
-//   2. Stream the multi-GB `.litertlm` model straight off disk to the renderer
-//      (`app://imaginarium/model/<id>`), so nothing is ever copied into OPFS
-//      the way the browser build had to.
-//   3. Proxy `/api/search` and `/api/extract` to the local OrioSearch API,
-//      replacing the nginx/Vite reverse proxy the web build relied on.
 
 import {
   app,
@@ -36,12 +25,9 @@ import { httpFetch } from './oauth/http';
 import { migrateLegacyUserData } from './migrateUserData';
 
 const SCHEME = 'app';
-// Internal only — it never appears in the UI, and changing it would invalidate
-// the renderer's origin (and with it every saved chat in IndexedDB).
 const HOST = 'imaginarium';
 const APP_ORIGIN = `${SCHEME}://${HOST}`;
 
-// Carry the data folder over from the old product name, before anything reads it.
 const migration = migrateLegacyUserData();
 if (migration.moved) console.log(`[omni-studio] moved settings from ${migration.from} to ${migration.to}`);
 else if (migration.reason === 'failed') console.warn('[omni-studio] could not move the old settings folder:', migration.error);
@@ -49,19 +35,10 @@ else if (migration.reason === 'failed') console.warn('[omni-studio] could not mo
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 const IS_DEV = Boolean(DEV_SERVER_URL);
 
-// Where the packaged renderer lives: dist-electron/main.cjs -> ../dist
 const RENDERER_ROOT = path.join(__dirname, '..', 'dist');
 
 const SEARCH_API = process.env.ORIOSEARCH_URL ?? 'http://localhost:8005';
 
-// ---------------------------------------------------------------------------
-// Model registry
-// ---------------------------------------------------------------------------
-//
-// The browser build cached model bytes in OPFS. On the desktop we only remember
-// *where the file is*, which avoids duplicating ~2 GB per model. `managed` marks
-// files this app downloaded into userData (safe for us to delete); a file the
-// user picked from their own disk is never deleted, only forgotten.
 
 interface ModelEntry {
   id: string;
@@ -79,7 +56,6 @@ interface Registry {
   models: ModelEntry[];
 }
 
-/** v1 shape: one entry per hard-coded model slot, keyed by slot name. */
 type RegistryV1 = Record<
   string,
   { path: string; name: string; size: number; managed: boolean; linkedAt: number }
@@ -93,7 +69,6 @@ let registry: Registry = { version: 2, models: [] };
 const labelFromFileName = (fileName: string) =>
   fileName.replace(/\.litertlm$/i, '') || fileName;
 
-// Windows paths are case-insensitive, so compare case-folded when deduping.
 const samePath = (a: string, b: string) =>
   path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
 
@@ -102,7 +77,7 @@ async function loadRegistry(): Promise<void> {
   try {
     raw = JSON.parse(await readFile(registryPath(), 'utf8'));
   } catch {
-    registry = { version: 2, models: [] }; // first run
+    registry = { version: 2, models: [] };
     return;
   }
 
@@ -112,9 +87,6 @@ async function loadRegistry(): Promise<void> {
     return;
   }
 
-  // Migrate v1 → v2. The old file keyed entries by slot name ("gemma-4-E2B");
-  // each becomes an ordinary library entry, so an already-linked model survives
-  // the upgrade instead of silently disappearing.
   const v1 = (raw ?? {}) as RegistryV1;
   registry = {
     version: 2,
@@ -140,17 +112,9 @@ async function saveRegistry(): Promise<void> {
   await writeFile(registryPath(), JSON.stringify(registry, null, 2), 'utf8');
 }
 
-// Every .litertlm file begins with the 8-byte ASCII magic "LITERTLM". Checking
-// it (plus a sane minimum size) catches the classic failure mode: a gated
-// Hugging Face download performed while signed out saves an HTML login page.
 const MAGIC = 'LITERTLM';
 const MIN_MODEL_BYTES = 50 * 1024 * 1024;
 
-/**
- * Validate a candidate model file without reading more than 8 bytes of it, and
- * return the library entry it would become. Any .litertlm is accepted — the app
- * has no notion of "supported" models beyond the format itself.
- */
 async function inspectModel(filePath: string): Promise<ModelEntry> {
   const st = await stat(filePath);
   if (!st.isFile()) throw new Error(`${filePath} is not a file.`);
@@ -201,10 +165,6 @@ async function inspectModel(filePath: string): Promise<ModelEntry> {
   };
 }
 
-/**
- * Validate a file and put it in the library. Adding a path that's already there
- * refreshes it in place rather than creating a duplicate entry.
- */
 async function addModel(filePath: string, managed = false): Promise<ModelEntry> {
   const candidate = await inspectModel(filePath);
   const existing = registry.models.find((m) => samePath(m.path, filePath));
@@ -221,7 +181,6 @@ async function addModel(filePath: string, managed = false): Promise<ModelEntry> 
   return candidate;
 }
 
-/** A library entry, re-checked against disk — files can be moved or deleted. */
 async function getModel(id: string): Promise<ModelEntry | null> {
   const entry = registry.models.find((m) => m.id === id);
   if (!entry) return null;
@@ -234,14 +193,12 @@ async function getModel(id: string): Promise<ModelEntry | null> {
     }
     return entry;
   } catch {
-    // The file went away. Drop the entry so the UI stops offering it.
     registry.models = registry.models.filter((m) => m.id !== id);
     await saveRegistry();
     return null;
   }
 }
 
-/** Every entry, with dead ones pruned. */
 async function listModels(): Promise<ModelEntry[]> {
   const alive: ModelEntry[] = [];
   let changed = false;
@@ -269,7 +226,6 @@ async function removeModel(id: string): Promise<void> {
   if (!entry) return;
   registry.models = registry.models.filter((m) => m.id !== id);
   await saveRegistry();
-  // Only remove files we downloaded ourselves — never the user's own file.
   if (entry.managed) await rm(entry.path, { force: true });
 }
 
@@ -288,12 +244,7 @@ async function touchModel(id: string): Promise<void> {
   await saveRegistry();
 }
 
-// ---------------------------------------------------------------------------
-// app:// protocol
-// ---------------------------------------------------------------------------
 
-// Cross-origin isolation. Required for SharedArrayBuffer, which LiteRT-LM's
-// wasm runtime uses; without these the engine fails to start.
 const ISOLATION_HEADERS: Record<string, string> = {
   'cross-origin-opener-policy': 'same-origin',
   'cross-origin-embedder-policy': 'require-corp',
@@ -319,9 +270,6 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
   '.xml': 'application/xml; charset=utf-8',
-  // Tesseract's language data ships pre-gzipped and is decompressed by the
-  // library itself — serve it as an opaque gzip blob, NOT with
-  // Content-Encoding, or Chromium will double-decompress it.
   '.gz': 'application/gzip',
   '.traineddata': 'application/octet-stream',
 };
@@ -347,14 +295,12 @@ async function serveStatic(url: URL): Promise<Response> {
   if (rel === '/' || rel === '') rel = '/index.html';
 
   let filePath = path.join(RENDERER_ROOT, path.normalize(rel));
-  // Reject traversal outside the bundled renderer.
   if (!filePath.startsWith(RENDERER_ROOT + path.sep) && filePath !== RENDERER_ROOT) {
     return new Response('Forbidden', { status: 403, headers: ISOLATION_HEADERS });
   }
 
   let st = await stat(filePath).catch(() => null);
   if (!st?.isFile()) {
-    // SPA fallback. The app uses HashRouter so this is mostly belt-and-braces.
     filePath = path.join(RENDERER_ROOT, 'index.html');
     st = await stat(filePath).catch(() => null);
     if (!st?.isFile()) {
@@ -368,9 +314,6 @@ async function serveStatic(url: URL): Promise<Response> {
   });
 }
 
-// The model stream is fetched by the renderer, which may be running on
-// http://localhost:5173 in dev — so it needs permissive CORS/CORP rather than
-// the same-origin headers used for the app shell.
 const MODEL_HEADERS: Record<string, string> = {
   'content-type': 'application/octet-stream',
   'cache-control': 'no-store',
@@ -387,7 +330,7 @@ async function serveModel(url: URL): Promise<Response> {
       { status: 404, headers: MODEL_HEADERS },
     );
   }
-  void touchModel(entry.id); // most-recently-used ordering in the picker
+  void touchModel(entry.id);
   return fileResponse(entry.path, entry.size, MODEL_HEADERS);
 }
 
@@ -408,7 +351,6 @@ async function serveApi(url: URL, request: Request): Promise<Response> {
         headers: { 'content-type': 'application/json', ...ISOLATION_HEADERS },
       });
     }
-    // net.fetch, so a remote ORIOSEARCH_URL still works behind a proxy.
     const upstream = await httpFetch(SEARCH_API + target, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -423,7 +365,6 @@ async function serveApi(url: URL, request: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    // The search backend is optional — surface a clean error the UI can show.
     return new Response(
       JSON.stringify({
         error: `Search backend unreachable at ${SEARCH_API}: ${(err as Error).message}`,
@@ -455,13 +396,6 @@ function registerProtocol(): void {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Model download (main-process, streamed to disk)
-// ---------------------------------------------------------------------------
-//
-// The browser build accumulated the whole download in memory before writing it.
-// Here it streams straight to a .part file in userData and is renamed on
-// success, so a cancelled or failed download never leaves a half-file behind.
 
 let downloadAbort: AbortController | null = null;
 
@@ -486,9 +420,6 @@ async function downloadModel(
     const totalHeader = res.headers.get('content-length');
     const total = totalHeader ? Number(totalHeader) : null;
 
-    // Count bytes in-line rather than teeing the stream, and throttle the
-    // reports — a 2 GB download is ~30k chunks, which is far too many IPC
-    // messages to forward one-for-one.
     let received = 0;
     let lastReport = 0;
     const counter = new Transform({
@@ -512,8 +443,6 @@ async function downloadModel(
       createWriteStream(partPath),
     );
 
-    // Validate before the rename so a gated-repo login page is discarded as a
-    // .part file rather than landing in the models directory.
     await inspectModel(partPath).catch(async (err) => {
       await rm(partPath, { force: true });
       throw err;
@@ -524,8 +453,6 @@ async function downloadModel(
     return await addModel(finalPath, true);
   } catch (err) {
     await rm(partPath, { force: true });
-    // Electron flattens errors across IPC, so the `AbortError` name is lost —
-    // use a message the renderer can recognise instead.
     if ((err as Error).name === 'AbortError') throw new Error('DOWNLOAD_CANCELLED');
     throw err;
   } finally {
@@ -533,9 +460,6 @@ async function downloadModel(
   }
 }
 
-// ---------------------------------------------------------------------------
-// IPC
-// ---------------------------------------------------------------------------
 
 function registerIpc(): void {
   registerSvnIpc();
@@ -554,8 +478,6 @@ function registerIpc(): void {
   }));
 
   ipcMain.handle('app:openExternal', async (_e, url: string) => {
-    // Hand only web and mail links to the OS. Anything else (file:, and the
-    // various protocol handlers that can launch programs) is refused.
     const { protocol: scheme } = new URL(url);
     if (!['https:', 'http:', 'mailto:'].includes(scheme)) {
       throw new Error(`Refusing to open ${scheme} URL: ${url}`);
@@ -570,11 +492,6 @@ function registerIpc(): void {
     renameModel(id, label),
   );
 
-  /**
-   * Native picker. Multi-select, because adding a folder of models one dialog at
-   * a time is tedious — each file is validated on its own so one bad pick does
-   * not throw away the good ones.
-   */
   ipcMain.handle('model:add', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win!, {
@@ -623,7 +540,6 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('storage:usage', async () => {
-    // How much disk the app is responsible for = the models it downloaded.
     let bytes = 0;
     for (const entry of registry.models) {
       if (entry.managed) bytes += entry.size;
@@ -632,9 +548,6 @@ function registerIpc(): void {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Window
-// ---------------------------------------------------------------------------
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -643,20 +556,15 @@ function createWindow(): BrowserWindow {
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: '#0c0e12', // --color-ink, so there is no white flash
+    backgroundColor: '#0c0e12',
     autoHideMenuBar: true,
-    // Packaged builds take the icon from the .exe (electron-builder stamps it
-    // in); in dev there is no .exe of ours, so point Electron at the file
-    // directly or the taskbar shows the stock Electron logo.
     ...(app.isPackaged
       ? {}
       : { icon: path.join(__dirname, '..', 'build', 'icon.ico') }),
-    // Keep the web app's own header as the title bar; Windows draws only the
-    // caption buttons on top of it. TopNav marks itself as the drag region.
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       color: '#0c0e12',
-      symbolColor: '#8b8597', // --color-muted
+      symbolColor: '#8b8597',
       height: 68,
     },
     webPreferences: {
@@ -664,16 +572,12 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      // Devtools are only useful against a build with sourcemaps.
       devTools: IS_DEV || !app.isPackaged,
     },
   });
 
   win.once('ready-to-show', () => win.show());
 
-  // One-line startup diagnostic. Both of these are hard requirements for
-  // LiteRT-LM, and when they're missing the failure surfaces deep inside wasm —
-  // so report them up front where they're actually readable.
   win.webContents.once('did-finish-load', () => {
     void win.webContents
       .executeJavaScript(
@@ -696,7 +600,6 @@ function createWindow(): BrowserWindow {
       .catch((err: Error) => console.warn('[imaginarium] probe failed:', err.message));
   });
 
-  // External links open in the OS browser, never in an app window.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://') || url.startsWith('http://')) {
       void shell.openExternal(url);
@@ -721,13 +624,7 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
-// ---------------------------------------------------------------------------
-// Bootstrap
-// ---------------------------------------------------------------------------
 
-// Must run before `app.ready`: marks app:// as a real, secure, fetchable origin
-// (rather than an opaque one), which is what makes cross-origin isolation and
-// module imports work from it.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: SCHEME,

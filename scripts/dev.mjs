@@ -1,8 +1,3 @@
-// Dev orchestration: Vite dev server (renderer, with HMR) + esbuild watch
-// (main/preload) + Electron pointed at the dev server.
-//
-// Editing anything under src/ hot-reloads in place. Editing electron/ rebuilds
-// and restarts Electron automatically.
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -12,10 +7,6 @@ import electronPath from 'electron';
 
 const OUT = 'dist-electron';
 
-// Local credentials (Auth0 / Google OAuth client, OrioSearch URL) live in an
-// untracked .env — see .env.example. They reach the main process as ordinary
-// environment variables, so nothing secret has to be typed into the app or
-// committed.
 if (existsSync('.env')) {
   process.loadEnvFile('.env');
   console.log('[dev] loaded .env');
@@ -37,7 +28,7 @@ function startElectron() {
   });
   child.on('exit', (code) => {
     child = null;
-    if (restarting) return; // we killed it on purpose
+    if (restarting) return;
     void shutdown(code ?? 0);
   });
 }
@@ -50,7 +41,6 @@ async function shutdown(code) {
   process.exit(code);
 }
 
-// Rebuild main/preload on change, then bounce Electron.
 const restartPlugin = {
   name: 'restart-electron',
   setup(build) {

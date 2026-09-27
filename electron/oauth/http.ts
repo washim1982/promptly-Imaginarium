@@ -1,22 +1,11 @@
-// HTTP for the sign-in flows and Google APIs, through Electron's net.fetch —
-// Chromium's network stack, the same one the user's browser uses — rather
-// than Node's fetch (undici). Node's fetch ignores the Windows proxy
-// configuration (PAC/WPAD, system proxy) and the Windows certificate store, so
-// behind a proxy, VPN or TLS-inspecting antivirus it fails with a bare
-// "TypeError: fetch failed" even though the browser half of a login worked.
-//
-// Connection-level failures (the request never got an answer) are retried a
-// couple of times, and the error names the host and the real cause.
 
 import { net } from 'electron';
 
 export interface HttpInit {
   method?: string;
   headers?: Record<string, string>;
-  /** Pre-serialised body: net.fetch is given a plain string. */
   body?: string;
   timeoutMs?: number;
-  /** Extra attempts after a connection failure (not after an HTTP error). */
   retries?: number;
 }
 
@@ -38,7 +27,6 @@ export async function httpFetch(url: string, init: HttpInit = {}): Promise<Respo
         headers: init.headers,
         body: init.body,
         signal: AbortSignal.timeout(init.timeoutMs ?? 30_000),
-        // Never send the app session's cookies to identity providers.
         credentials: 'omit',
       });
     } catch (err) {
@@ -53,5 +41,4 @@ export async function httpFetch(url: string, init: HttpInit = {}): Promise<Respo
   throw new Error(`Couldn't reach ${host} (${causeOf(last)}). Check your internet connection, VPN or proxy, then try again.`);
 }
 
-/** application/x-www-form-urlencoded body. */
 export const form = (fields: Record<string, string>) => new URLSearchParams(fields).toString();

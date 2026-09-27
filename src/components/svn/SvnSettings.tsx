@@ -63,7 +63,6 @@ export function SvnSettings({ reviewModelLabel, reviewModelState, onClose, onSav
     }
   }
 
-  /** Save without closing, so a following checkout can report its own progress. */
   async function persist(): Promise<boolean> {
     try {
       const saved = await svnApi.saveSettings({

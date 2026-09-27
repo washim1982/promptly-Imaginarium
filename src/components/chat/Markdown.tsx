@@ -2,15 +2,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
 
-// Renders assistant markdown: headings, lists, tables (GFM), inline code, and
-// fenced code blocks with syntax highlighting + copy.
 export default function Markdown({ children }: { children: string }) {
   return (
     <div className="space-y-3 text-[15px] leading-relaxed text-white/90">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Block code -> highlighted CodeBlock; inline code -> styled span.
           code({ className, children, ...props }) {
             const text = String(children ?? '');
             const match = /language-(\w+)/.exec(className || '');
@@ -32,7 +29,6 @@ export default function Markdown({ children }: { children: string }) {
               </code>
             );
           },
-          // <pre> would wrap our CodeBlock in invalid markup; pass through.
           pre: ({ children }) => <>{children}</>,
           h1: ({ children }) => (
             <h1 className="text-xl font-semibold text-white">{children}</h1>

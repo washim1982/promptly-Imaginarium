@@ -1,6 +1,3 @@
-// IPC surface for the Git Studio tab — Git Pilot's electron/main.ts handlers,
-// moved under a git: namespace. The preload exposes them as
-// window.imaginarium.git.*; the renderer's typed wrapper is src/lib/git/api.ts.
 
 import { app, BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { spawn } from 'node:child_process';
@@ -10,13 +7,13 @@ import { randomUUID } from 'node:crypto';
 import * as git from './gitService';
 import { scanRepository, scanStaged, collectCandidates } from './secretScan';
 import { removeSecrets, forcePush } from './historyRewrite';
+import { scanComments, removeComments } from './commentScan';
 import type { RecentRepo } from './types';
 
 const MAX_RECENT = 20;
 
 const windowOf = (e: IpcMainInvokeEvent) => BrowserWindow.fromWebContents(e.sender)!;
 
-/** Literal secret values from the last scan, kept out of the renderer. */
 const scans = new Map<string, { root: string; secrets: Map<string, string> }>();
 const rootKey = (root: string) => process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
 function requireScan(root: string, scanId: string) {
@@ -64,7 +61,6 @@ async function rememberRepo(root: string): Promise<void> {
   await writeRecent(next);
 }
 
-/** A visible PowerShell window in the repository, showing `git status`. */
 async function openPowerShell(root: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const startCommand = [
@@ -73,7 +69,6 @@ async function openPowerShell(root: string): Promise<void> {
       '-WindowStyle Normal',
       "-ArgumentList @('-NoExit', '-NoLogo', '-Command', 'git status')",
     ].join(' ');
-    // The repository path is the cwd, never part of the command text.
     const launcher = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', startCommand], {
       cwd: root,
       stdio: 'ignore',
@@ -151,36 +146,26 @@ export function registerGitIpc(): void {
   ipcMain.handle('git:authInfo', () => git.authInfo());
   ipcMain.handle('git:signIn', (_e, repo: string) => git.signIn(repo));
 
-  // ---- credential scan / removal ------------------------------------------------
-  // The scan's literal values stay here; the renderer only ever sees masked
-  // text and finding ids, and asks for removal by id.
   ipcMain.handle('git:scanSecrets', async (_e, repo: string) => {
     const root = await git.resolveRepoRoot(repo);
     const { secrets, ...result } = await scanRepository(root);
     const scanId = randomUUID();
     scans.set(scanId, { root, secrets });
-    // Bound retained credential data while keeping concurrent dialogs independent.
     if (scans.size > 8) scans.delete(scans.keys().next().value!);
     return { ...result, scanId };
   });
 
-  // Staged-only scan, for the check before a commit. Deliberately does not
-  // touch full-scan sessions: these values are not in the history yet, so they must
-  // never be handed to removeSecrets, which rewrites commits.
   ipcMain.handle('git:scanStaged', async (_e, repo: string) => {
     const root = await git.resolveRepoRoot(repo);
     const { secrets: _secrets, ...result } = await scanStaged(root);
     return result;
   });
 
-  // Deep scan: lines the rules didn't match, for the local model to judge. The
-  // renderer needs the text itself here — the model runs in the renderer.
   ipcMain.handle('git:scanCandidates', async (_e, repo: string, scanId: string) => {
     const root = await git.resolveRepoRoot(repo);
     const scan = requireScan(root, scanId);
     const known = new Set(scan.secrets.values());
     const result = await collectCandidates(root, known);
-    // Remember each candidate's value so a confirmed one can be removed by id.
     requireScan(root, scanId);
     for (const c of result.candidates) scan.secrets.set(c.id, c.value);
     return result;
@@ -193,14 +178,11 @@ export function registerGitIpc(): void {
     if (ids.some(id => !scan.secrets.has(String(id)))) throw new Error('SCAN_EXPIRED: Selected findings are no longer available. Scan again.');
     const values = ids.map(id => scan.secrets.get(String(id))!);
     if (!values.length) throw new Error('Select at least one finding to remove.');
-    // Invalidate every snapshot of this repository before mutation, including
-    // duplicate submissions. A failed rewrite must be rescanned too.
     for (const [id, entry] of scans) if (rootKey(entry.root) === rootKey(root)) scans.delete(id);
     const summary = await removeSecrets(root, values);
     try {
       return { summary, state: await git.getRepoState(root) };
     } catch {
-      // A refresh failure must not turn a successful rewrite into a failed action.
       return { summary, state: null, warning: 'Removal completed, but the repository view could not refresh. Reopen the repository to refresh it.' };
     }
   });
@@ -209,6 +191,17 @@ export function registerGitIpc(): void {
     const root = await git.resolveRepoRoot(repo);
     const message = await forcePush(root, String(remote ?? ''), String(branch ?? ''));
     return { message, state: await git.getRepoState(root) };
+  });
+
+  ipcMain.handle('git:scanComments', async (_e, repo: string) => {
+    const root = await git.resolveRepoRoot(repo);
+    return scanComments(root);
+  });
+
+  ipcMain.handle('git:removeComments', async (_e, repo: string, ids: string[]) => {
+    const root = await git.resolveRepoRoot(repo);
+    const result = await removeComments(root, Array.isArray(ids) ? ids.map(String) : []);
+    return { result, state: await git.getRepoState(root) };
   });
 
   ipcMain.handle('git:openExplorer', async (_e, repo: string) => {

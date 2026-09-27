@@ -1,5 +1,3 @@
-// IPC for the optional Auth0 login. The renderer gets status and the user's
-// profile; tokens never leave the main process.
 
 import { ipcMain } from 'electron';
 import * as auth0 from './auth';

@@ -1,4 +1,3 @@
-// Button styles shared by the sidebar sections and dialogs.
 
 export const panelButton =
   'flex items-center justify-center gap-1.5 rounded-lg border border-white/15 px-2.5 py-1.5 text-[12px] text-white/75 transition hover:bg-white/10 hover:text-white disabled:opacity-40';

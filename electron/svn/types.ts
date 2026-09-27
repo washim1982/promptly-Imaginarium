@@ -1,6 +1,3 @@
-// Shared shapes for the SVN Studio port. Ported from SVN Studio's
-// web/server/src/types/svn.types.ts, minus the OpenAI-endpoint AI settings — AI
-// review runs on the in-app LiteRT-LM model instead of an HTTP server.
 
 export type SvnItemStatus =
   | 'normal'
@@ -18,7 +15,7 @@ export type SvnItemStatus =
   | 'obstructed';
 
 export interface SvnTreeNode {
-  path: string; // relative to the working copy root, "/"-separated
+  path: string;
   name: string;
   isDirectory: boolean;
   status: SvnItemStatus;
@@ -46,9 +43,8 @@ export interface SvnLogEntry {
 export interface SvnSettings {
   repoUrl: string;
   username: string;
-  password: string; // encrypted at rest with safeStorage, decrypted only in-process
+  password: string;
   workingCopyPath: string;
-  /** Explicit svn.exe; blank = auto-detect (PATH, then known install folders). */
   svnPath: string;
 }
 
@@ -66,7 +62,6 @@ export interface CommandResult {
   code: number;
 }
 
-/** What the AI reviewer looks at. "" in folders means the whole working copy. */
 export interface AiScope {
   files: string[];
   folders: string[];

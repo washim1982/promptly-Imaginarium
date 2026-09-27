@@ -1,6 +1,3 @@
-// SVN Studio's client API (web/client/src/api/svnApi.ts), re-pointed from
-// fetch('/api/...') at the Electron main process over IPC. The method names and
-// shapes match the original so the ported components need no changes to call it.
 
 import { cleanError, requireDesktop } from '../desktop';
 import type { AiContext, AiScope, SvnLogEntry, SvnSettingsPublic, SvnTreeNode } from './types';
@@ -45,7 +42,6 @@ function bridge(): SvnBridge {
   return (requireDesktop() as unknown as { svn: SvnBridge }).svn;
 }
 
-/** Call through to main, re-throwing with Electron's IPC prefix stripped. */
 async function call<T>(fn: (b: SvnBridge) => Promise<T>): Promise<T> {
   try {
     return await fn(bridge());
@@ -71,10 +67,8 @@ export const svnApi = {
   lock: (path: string, message?: string) => call((b) => b.lock(path, message)),
   unlock: (path: string) => call((b) => b.unlock(path)),
 
-  /** Native picker for files or a whole folder, copied in and `svn add`ed. */
   uploadPick: (targetFolder: string, kind: 'files' | 'folder') =>
     call((b) => b.uploadPick(targetFolder, kind)),
-  /** Files dropped from Explorer onto a tree folder. */
   importFiles: (targetFolder: string, files: FileList | File[]) =>
     call((b) => {
       const paths = Array.from(files).map((f) => b.pathForFile(f)).filter(Boolean);

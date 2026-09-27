@@ -1,7 +1,3 @@
-// Builds the text the model sees for an AI review, ported from SVN Studio's
-// web/server/src/services/aiContext.ts. It still runs in the main process (it
-// needs the filesystem and svn diff), but it now only *assembles* the context —
-// the model runs in the renderer on the in-app LiteRT-LM engine.
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -18,20 +14,12 @@ const BINARY_EXT = new Set([
 ]);
 const MAX_FILE_BYTES = 200_000;
 
-// A NUL character marks binary content. The original embedded a raw NUL byte in
-// its string literal; building it keeps an invisible control character out of
-// the source.
 const NUL = String.fromCharCode(0);
 
 function isProbablyText(relativePath: string, content: string): boolean {
   return !BINARY_EXT.has(path.extname(relativePath).toLowerCase()) && !content.includes(NUL);
 }
 
-/**
- * Assemble review context in priority order — explicit files first, then
- * uncommitted changes, then folder contents — stopping once the character budget
- * is spent so the prompt always fits the model's context window.
- */
 export async function buildAiContext(
   settings: SvnSettings,
   scope: AiScope,
@@ -43,7 +31,6 @@ export async function buildAiContext(
   let truncated = false;
   let fileCount = 0;
 
-  // Returns false once the budget is exhausted, so callers can stop walking.
   function add(block: string): boolean {
     const remaining = budget - used;
     if (block.length <= remaining) {

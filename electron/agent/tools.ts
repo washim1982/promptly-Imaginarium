@@ -1,10 +1,3 @@
-// Main-process implementations of the agent's tools.
-//
-// File tools are confined to the workspace folder the user picked: the model
-// only ever supplies *relative* paths, which go through the same traversal
-// check as SVN Studio, plus a real-path check so a symlink inside the workspace
-// can't reach outside it. Which calls need the user's approval is decided in
-// the renderer (src/lib/agent/tools.ts) before any of this runs.
 
 import { spawn, execFile } from 'node:child_process';
 import { appendFile, mkdir, open as fsOpen, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
@@ -17,17 +10,14 @@ const SKIP_DIRS = new Set([
   '__pycache__', '.idea', '.vs', 'bin', 'obj', 'target', 'dist-electron',
 ]);
 const MAX_READ_BYTES = 400_000;
-/** A file the agent builds up with append_file stops here. */
 const MAX_APPEND_BYTES = 2_000_000;
 const MAX_SEARCH_FILE_BYTES = 1_000_000;
 const MAX_COMMAND_OUTPUT = 64_000;
 
-/** Resolve a model-supplied relative path, refusing anything outside `root`. */
 async function resolveInside(root: string, rel: string, mustExist: boolean): Promise<string> {
   const safe = assertSafeRelativePath(root, rel || '.');
   const target = path.resolve(root, safe);
   const realRoot = await realpath(root);
-  // For a file that doesn't exist yet (write_file), check its nearest existing parent.
   let probe = target;
   for (;;) {
     try {
@@ -68,13 +58,11 @@ export async function listDir(root: string, rel: string): Promise<string> {
 
 export interface DirEntry {
   name: string;
-  /** Workspace-relative, forward slashes. */
   path: string;
   isDir: boolean;
   size: number;
 }
 
-/** Structured listing for the sidebar's workspace tree (the tool gets text). */
 export async function listEntries(root: string, rel: string): Promise<DirEntry[]> {
   const dir = await resolveInside(root, rel, true);
   const base = assertSafeRelativePath(root, rel || '.').replace(/^\.?\/?$/, '');
@@ -90,7 +78,6 @@ export async function listEntries(root: string, rel: string): Promise<DirEntry[]
   );
 }
 
-/** A whole text file, for attaching to a chat message. */
 export async function readForAttach(root: string, rel: string): Promise<{ name: string; text: string }> {
   const file = await resolveInside(root, rel, true);
   const st = await stat(file);
@@ -128,9 +115,8 @@ export async function searchFiles(root: string, pattern: string, glob?: string):
   try {
     re = new RegExp(pattern, 'i');
   } catch {
-    re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); // not a valid regex: search literally
+    re = new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
   }
-  // "*.ts" / "src/**/*.py" → a filename filter; kept deliberately simple.
   const globRe = glob
     ? new RegExp(
         '^' +
@@ -185,12 +171,6 @@ export async function writeTextFile(root: string, rel: string, content: string):
   return `${existing ? 'Overwrote' : 'Created'} ${rel} (${Buffer.byteLength(content)} bytes).`;
 }
 
-/**
- * Add to the end of a workspace file, creating it if needed.
- *
- * Lets a long document be built across many rounds without holding the whole
- * thing in context, which write_file would require (it replaces the file).
- */
 export async function appendTextFile(root: string, rel: string, content: string): Promise<string> {
   const file = await resolveInside(root, rel, false);
   const existing = await stat(file).catch(() => null);
@@ -200,7 +180,6 @@ export async function appendTextFile(root: string, rel: string, content: string)
     throw new Error(`${rel} would exceed ${MAX_APPEND_BYTES / 1000} KB. Start a new file instead.`);
   }
   await mkdir(path.dirname(file), { recursive: true });
-  // A newline between chunks, unless the file already ends with one.
   let prefix = '';
   if (existing?.size) {
     const tail = Buffer.alloc(1);
@@ -217,11 +196,6 @@ export async function appendTextFile(root: string, rel: string, content: string)
   return `${existing ? 'Appended to' : 'Created'} ${rel} (+${addition} bytes, ${total} bytes total).`;
 }
 
-/**
- * Run a shell command in the workspace. PowerShell on Windows, sh elsewhere.
- * A timeout kills the whole process tree — a plain kill would leave anything
- * the shell spawned still running.
- */
 export function runCommand(root: string, command: string, timeoutMs = 60_000): Promise<{ ok: boolean; output: string }> {
   return new Promise((resolve) => {
     const isWin = process.platform === 'win32';
@@ -265,7 +239,6 @@ export function runCommand(root: string, command: string, timeoutMs = 60_000): P
   });
 }
 
-// ---- fetch_url --------------------------------------------------------------------
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
@@ -301,9 +274,6 @@ export async function fetchUrl(url: string): Promise<string> {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     throw new Error('Only http and https URLs can be fetched.');
   }
-  // net.fetch, not Node's fetch: Chromium's stack honours the system proxy
-  // (PAC/WPAD) and the Windows certificate store, so this still works behind a
-  // corporate proxy or a TLS-inspecting gateway.
   const res = await httpFetch(parsed.toString(), {
     timeoutMs: 20_000,
     retries: 1,

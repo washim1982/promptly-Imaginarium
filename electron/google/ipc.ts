@@ -1,5 +1,3 @@
-// IPC for the chat sidebar's Google sections. The renderer can ask for status,
-// start/cancel sign-in, and read mail/files; it never receives a token.
 
 import { ipcMain } from 'electron';
 import * as auth from './auth';

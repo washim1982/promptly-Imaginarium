@@ -35,7 +35,6 @@ export default function Planning() {
       if (online) {
         setMessage('Looking up ideas and practical details…');
         try {
-          // Family details and private notes are never included in the search query.
           found = await webSearch(`${snapshot.title} ${snapshot.location} ${snapshot.start} family activities opening hours`, abort.signal);
         } catch (error) {
           if (abort.signal.aborted) return;

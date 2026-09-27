@@ -1,15 +1,3 @@
-/*
-  Git Studio — Git Pilot's layout, re-skinned for Imaginarium.
-
-  The structure follows Git Pilot's styles.css (sidebar · explorer · hero ·
-  overview cards · tabs · panels). The palette does not: every colour resolves
-  to an Imaginarium token, so the tab uses the same ink background, glass
-  panels and mono micro-labels as the rest of the app, and follows the accent
-  chosen in Settings (--color-neon) live.
-
-  Scoped under .git-studio with gs- classes and --gs-* tokens, so nothing here
-  can restyle another tab or collide with Tailwind's theme variables.
-*/
 
 .git-studio {
   --gs-surface: var(--color-glass);
@@ -92,7 +80,6 @@
     animation: gs-spin 0.9s linear infinite;
   }
 
-  /* ---- Sidebar ------------------------------------------------------------------ */
 
   & .gs-sidebar {
     width: 256px;
@@ -436,7 +423,6 @@
     font-size: 10.5px;
   }
 
-  /* ---- Shells --------------------------------------------------------------------- */
 
   & .gs-workspace,
   & .gs-welcome-shell,
@@ -517,7 +503,6 @@
     background: transparent;
   }
 
-  /* ---- Buttons -------------------------------------------------------------------- */
 
   & .gs-button {
     min-height: 36px;
@@ -542,7 +527,6 @@
     transform: translateY(-1px);
   }
 
-  /* The app's primary button: neon fill, black text, glow. */
   & .gs-button.primary {
     color: #000;
     border: 0;
@@ -621,7 +605,6 @@
     color: var(--gs-accent);
   }
 
-  /* ---- Workspace body ---------------------------------------------------------------- */
 
   & .gs-workspace-body {
     min-width: 0;
@@ -859,7 +842,6 @@
     scrollbar-width: thin;
   }
 
-  /* ---- Hero + overview -------------------------------------------------------------- */
 
   & .gs-repo-hero {
     max-width: 1300px;
@@ -1026,7 +1008,6 @@
     pointer-events: none;
   }
 
-  /* ---- Tabs -------------------------------------------------------------------------- */
 
   & .gs-tabs {
     max-width: 1300px;
@@ -1078,7 +1059,6 @@
     font-weight: 500;
   }
 
-  /* ---- Panels ------------------------------------------------------------------------- */
 
   & .gs-panel {
     min-width: 0;
@@ -1318,7 +1298,6 @@
     font-size: 12.5px;
   }
 
-  /* ---- Commit panel -------------------------------------------------------------------- */
 
   & .gs-commit-panel {
     display: flex;
@@ -1427,7 +1406,6 @@
     font-size: 11px;
   }
 
-  /* ---- History -------------------------------------------------------------------------- */
 
   & .gs-history-count {
     display: inline-flex;
@@ -1524,7 +1502,6 @@
     border-color: var(--gs-accent-line);
   }
 
-  /* ---- Branches ------------------------------------------------------------------------ */
 
   & .gs-branch-list {
     padding: 8px;
@@ -1678,7 +1655,6 @@
     font-size: 11px;
   }
 
-  /* ---- Welcome -------------------------------------------------------------------------- */
 
   & .gs-welcome-topbar > span {
     color: var(--gs-muted);
@@ -1864,7 +1840,6 @@
     font-size: 10.5px;
   }
 
-  /* ---- Busy bar + toast ------------------------------------------------------------------ */
 
   & .gs-busy-bar {
     position: absolute;
@@ -1936,7 +1911,6 @@
     background: transparent;
   }
 
-  /* ---- Modals ------------------------------------------------------------------------------ */
 
   & .gs-modal-backdrop {
     position: fixed;
@@ -2381,7 +2355,6 @@
     gap: 8px;
   }
 
-  /* ---- Narrower windows --------------------------------------------------------------------- */
 
   @media (max-width: 1280px) {
     & .gs-overview-grid {
@@ -2430,7 +2403,6 @@
   }
 }
 
-/* ---- Credential scan (Scan button) ------------------------------------------------ */
 
 .git-studio .gs-scan-body {
   display: flex;
@@ -2582,7 +2554,6 @@
   background: color-mix(in srgb, var(--gs-violet) 16%, transparent);
 }
 
-/* Staged: about to be committed — the one the pre-commit gate is built on. */
 .git-studio .gs-where.staged {
   color: var(--gs-amber, #f2b544);
   background: color-mix(in srgb, var(--gs-amber, #f2b544) 18%, transparent);
@@ -2592,6 +2563,76 @@
   display: flex;
   gap: 8px;
   padding-bottom: 2px;
+}
+
+
+.git-studio .gs-comment-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-studio .gs-comment-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.git-studio .gs-comment-toggle:hover {
+  color: var(--gs-text);
+}
+
+.git-studio .gs-comment-all {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gs-muted);
+  cursor: pointer;
+}
+
+.git-studio .gs-comment-locked {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--gs-muted);
+}
+
+.git-studio .gs-comment-note {
+  margin: 2px 0 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--gs-muted);
+}
+
+.git-studio .gs-finding.gs-comment .gs-comment-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--gs-text);
+}
+
+.git-studio .gs-finding.gs-comment.locked {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .git-studio .gs-scan-confirm,
@@ -2656,7 +2697,6 @@
   font-size: 11.5px;
 }
 
-/* Deep scan with AI (optional second pass over the pattern scan) */
 .git-studio .gs-deep {
   display: flex;
   flex-direction: column;

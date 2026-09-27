@@ -13,9 +13,7 @@ interface ChangesTreeProps {
 export function ChangesTree({ root, checked, onToggle, onOpen }: ChangesTreeProps) {
   return (
     <div className="svn-changes">
-      {/* The working-copy root has its own properties (svn:ignore usually lives
-          here). Committing it recurses over everything, so its checkbox only
-          governs the root item — the commit guard asks for the rest explicitly. */}
+      {}
       {root.status !== 'normal' && (
         <div className="svn-tree">
           <div className="svn-tree__row" style={{ paddingLeft: 6 }}>
@@ -69,7 +67,7 @@ function ChangeRow({
 
   return (
     <div className="svn-tree">
-      {/* New: clicking a changed file's row opens it (and its diff) in the editor. */}
+      {}
       <div
         className="svn-tree__row"
         style={{ paddingLeft: 6 + depth * 12, cursor: node.isDirectory ? 'default' : 'pointer' }}

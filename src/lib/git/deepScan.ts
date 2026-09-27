@@ -1,13 +1,6 @@
-// "Deep scan with AI": the local model judges lines the pattern rules didn't
-// match. It can only *add* suspects — the rules stay the source of truth, and
-// anything the model flags arrives unticked for you to confirm.
-//
-// Everything stays on this PC: the candidate lines go to the in-app LiteRT-LM
-// engine, never to a network service.
 
 import type { Candidate } from './api';
 
-/** Candidates per request. Small batches keep a small model on-format. */
 export const BATCH_SIZE = 8;
 
 export const DEEP_SCAN_SYSTEM = `You are a security reviewer checking whether values found in source code are real credentials.
@@ -32,11 +25,6 @@ export interface Verdict {
   kind: string;
 }
 
-/**
- * Parse the model's reply. Small models wander off format, so this takes any
- * line that starts with an item number and contains YES or NO, and ignores the
- * rest. Items it never mentions are treated as "no".
- */
 export function parseVerdicts(text: string, batchSize: number): Map<number, Verdict> {
   const out = new Map<number, Verdict>();
   for (const raw of text.split(/\r?\n/)) {
@@ -56,7 +44,6 @@ export function parseVerdicts(text: string, batchSize: number): Map<number, Verd
   return out;
 }
 
-/** Mask a value the same way the main process does, so nothing full is shown. */
 export function maskValue(value: string): string {
   const v = value.replace(/\s+/g, ' ').trim();
   if (v.length <= 8) return `${v.slice(0, 2)}${'•'.repeat(4)}`;

@@ -1,4 +1,3 @@
-// Pure helpers for the Git Studio UI (from Git Pilot's App.tsx).
 
 import type { FileChange, RepoState } from './types';
 
@@ -46,7 +45,6 @@ const STATUS_LABELS: Record<FileChange['status'], string> = {
 
 export const statusLabel = (change: FileChange) => STATUS_LABELS[change.status];
 
-/** One-letter explorer badge, VS Code style. */
 export function statusLetter(status: FileChange['status']): string {
   const letters: Record<FileChange['status'], string> = {
     added: 'A',
@@ -72,8 +70,6 @@ export interface FileTreeNode {
 
 export function buildFileTree(files: RepoState['files']): FileTreeNode[] {
   const roots: FileTreeNode[] = [];
-  // Folder lookup by path — Git Pilot searched each level's array linearly,
-  // which is quadratic on wide folders.
   const folders = new Map<string, FileTreeNode>();
 
   for (const file of files) {
@@ -108,7 +104,6 @@ export function buildFileTree(files: RepoState['files']): FileTreeNode[] {
   return sortNodes(roots);
 }
 
-/** Sync hint under REMOTE SYNC. */
 export function syncHint(repo: RepoState): string {
   if (!repo.remotes.length) return 'no remote connected';
   if (!repo.upstream) return 'not published yet';

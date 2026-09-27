@@ -13,7 +13,6 @@ export function normalizeResults(data: unknown, limit: number): SearchResult[] {
   }).slice(0, limit);
 }
 
-/** Shared by Electron and the browser development server; credentials stay server-side. */
 export async function searchProviders(request: Request, query: string, limit: number, keenableKey?: string, tavilyKey?: string): Promise<SearchResult[]> {
   let primaryError: unknown;
   try {

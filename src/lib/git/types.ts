@@ -1,5 +1,3 @@
-// Renderer copy of electron/git/types.ts (the renderer and main are separate
-// TypeScript projects). Keep the two in sync.
 
 export type ChangeStatus =
   | 'added'
@@ -24,7 +22,6 @@ export interface FileChange {
 export interface RepoFile {
   path: string;
   tracked: boolean;
-  /** Present in the upstream branch's tree — i.e. already pushed. */
   uploaded: boolean;
   status?: ChangeStatus;
 }
@@ -58,13 +55,11 @@ export interface RepoIdentity {
 export interface RepoState {
   root: string;
   name: string;
-  /** Branch name, or DETACHED_HEAD. An unborn branch (no commits yet) still has its name. */
   branch: string;
   upstream: string;
   ahead: number;
   behind: number;
   files: RepoFile[];
-  /** True when the repository had more files than the explorer lists. */
   filesTruncated: boolean;
   changes: FileChange[];
   commits: CommitInfo[];

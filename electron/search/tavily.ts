@@ -1,14 +1,3 @@
-// Web search for the chat and the agent's web_search tool.
-//
-// Keenable is the default; a saved Tavily key enables automatic fallback.
-//
-// Everything goes through httpFetch (Electron's net.fetch — Chromium's network
-// stack), never Node's fetch: behind a corporate proxy or a TLS-inspecting
-// gateway Node's fetch ignores the Windows proxy configuration and the Windows
-// certificate store, and fails with a bare "TypeError: fetch failed".
-//
-// The key is held here in the main process, encrypted at rest with safeStorage
-// (DPAPI on Windows). The renderer only ever sees a masked form of it.
 
 import { app, safeStorage } from 'electron';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -25,18 +14,13 @@ export interface SearchResult {
 export type SearchProvider = 'keenable' | 'tavily';
 
 export interface SearchStatus {
-  /** Keenable's public endpoint is available without configuration. */
   configured: boolean;
   keenableSource: 'env' | 'saved' | null;
   keenableMasked: string;
   provider: SearchProvider | null;
-  /** Where the Tavily key came from, if there is one. */
   source: 'env' | 'saved' | null;
-  /** "tvly-…a1b2" — enough to recognise the key, not enough to use it. */
   masked: string;
-  /** False on a machine without DPAPI: the key then lives for this run only. */
   canPersist: boolean;
-  /** Tavily fallback endpoint. */
   fallbackUrl: string;
 }
 
@@ -47,12 +31,9 @@ function checkProvider(provider: SearchProvider): void {
 
 const TAVILY_URL = 'https://api.tavily.com/search';
 
-/** Key held in memory when safeStorage can't persist it (no DPAPI). */
 const volatileKeys: Partial<Record<SearchProvider, string>> = {};
 
-// ---- the key ---------------------------------------------------------------------------
 
-/** Tavily keys look like "tvly-…" or "tvly-dev-…". */
 export function validateKey(raw: unknown, provider: SearchProvider = 'tavily'): string {
   checkProvider(provider);
   const key = String(raw ?? '').trim();
@@ -79,7 +60,6 @@ async function loadKey(provider: SearchProvider = 'tavily'): Promise<{ key: stri
     try {
       return { key: validateKey(fromEnv, provider), source: 'env' };
     } catch {
-      /* a malformed env var shouldn't hide a good saved key */
     }
   }
   if (volatileKeys[provider]) return { key: volatileKeys[provider]!, source: 'saved' };
@@ -87,7 +67,7 @@ async function loadKey(provider: SearchProvider = 'tavily'): Promise<{ key: stri
     if (!safeStorage.isEncryptionAvailable()) return null;
     return { key: safeStorage.decryptString(await readFile(keyFile(provider))), source: 'saved' };
   } catch {
-    return null; // not set yet, or encrypted for a different Windows user
+    return null;
   }
 }
 
@@ -98,7 +78,7 @@ export async function saveKey(raw: unknown, provider: SearchProvider = 'tavily')
     await writeFile(keyFile(provider), safeStorage.encryptString(key));
     delete volatileKeys[provider];
   } else {
-    volatileKeys[provider] = key; // this run only — never plain text on disk
+    volatileKeys[provider] = key;
   }
   return status();
 }
@@ -125,7 +105,6 @@ export async function status(): Promise<SearchStatus> {
   };
 }
 
-// ---- searching -------------------------------------------------------------------------
 
 function toResults(raw: unknown, limit: number): SearchResult[] {
   const rows: unknown[] = Array.isArray((raw as { results?: unknown[] })?.results)
@@ -144,7 +123,6 @@ function toResults(raw: unknown, limit: number): SearchResult[] {
     .slice(0, limit);
 }
 
-/** Turn Tavily's HTTP errors into something a user can act on. */
 function tavilyError(statusCode: number, body: string): Error {
   if (statusCode === 401) return new Error('Tavily rejected the API key. Check it in Settings → Web search.');
   if (statusCode === 429) return new Error('Tavily rate limit reached. Wait a moment, or check your plan usage.');
@@ -166,7 +144,6 @@ async function searchTavily(key: string, query: string, maxResults: number): Pro
   return toResults(await res.json(), maxResults);
 }
 
-/** Keenable first, with the existing encrypted Tavily key as fallback. */
 export async function search(query: string, maxResults = 8): Promise<SearchResult[]> {
   const q = String(query ?? '').trim();
   if (!q) throw new Error('Enter something to search for.');
@@ -176,13 +153,11 @@ export async function search(query: string, maxResults = 8): Promise<SearchResul
   return searchProviders(httpFetch, q, limit, keenable?.key, loaded?.key);
 }
 
-/** Settings' "Test key": confirm a key works before saving it. */
 export async function verifyKey(raw: unknown, provider: SearchProvider = 'tavily'): Promise<{ ok: true; sample: string }> {
   checkProvider(provider);
   const key = String(raw ?? '').trim() ? validateKey(raw, provider) : (await loadKey(provider))?.key;
   if (!key) throw new Error('Add a key before testing.');
   if (provider === 'keenable') {
-    // Test only the authenticated endpoint: fallback must never hide a rejected key.
     const res = await httpFetch('https://api.keenable.ai/v1/search', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': key },
       body: JSON.stringify({ query: 'family travel', max_results: 1 }), timeoutMs: 20_000, retries: 0,

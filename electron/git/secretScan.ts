@@ -1,25 +1,11 @@
-// Credential scanner for Git Studio's Scan button.
-//
-// Looks in two places: the files as they are now (tracked and untracked), and
-// every blob that has ever been committed on any branch — a credential deleted
-// in a later commit is still in the history, which is the case that matters.
-//
-// Findings are reported with the value masked. The literal value is kept only
-// in the main process, so removing it later can match exactly.
 
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { runGit } from './gitService';
 
-/**
- * Bigger than this and a file is almost certainly not hand-written config.
- * Anything skipped is counted and reported, so a secret is never missed
- * silently — the same limit governs removal (historyRewrite.ts imports it).
- */
 export const MAX_BLOB_BYTES = 5_000_000;
 const MAX_BLOBS = 20_000;
 const MAX_FINDINGS = 500;
-/** A line with this marker is skipped — lets this file's own patterns be ignored. */
 const IGNORE_MARKER = 'secret-scan:ignore';
 
 const BINARY_EXT = new Set([
@@ -31,24 +17,20 @@ const BINARY_EXT = new Set([
 export interface SecretRule {
   id: string;
   label: string;
-  /** Must have the global flag; group 1 (if present) is the secret itself. */
   pattern: RegExp;
-  /** Cheap check applied to the match before reporting. */
   accept?: (value: string) => boolean;
 }
 
-/** Values that look like a placeholder rather than a real credential. */
 function looksReal(value: string): boolean {
   const v = value.trim();
   if (v.length < 8) return false;
   if (/^\$?\{|\$\(|process\.env|import\.meta\.env|%[A-Z_]+%|<[^>]+>/.test(v)) return false;
   if (/^(your|my|the)[-_ ]/i.test(v)) return false;
   if (/(example|sample|placeholder|changeme|dummy|test[-_]?value|redacted|removed|xxxx+|\*{3,}|\.{3,})/i.test(v)) return false;
-  if (/^[a-z]+$/.test(v) && v.length < 16) return false; // a plain word
+  if (/^[a-z]+$/.test(v) && v.length < 16) return false;
   return /[0-9]/.test(v) || /[A-Z]/.test(v) || /[_\-+/=]/.test(v);
 }
 
-// The patterns are written so they can't match their own source text here.
 export const SECRET_RULES: SecretRule[] = [
   { id: 'aws-access-key', label: 'AWS access key ID', pattern: /\bAKIA[0-9A-Z]{16}\b/g },
   { id: 'aws-secret', label: 'AWS secret access key', pattern: /\baws.{0,20}?(?:secret|private).{0,20}?["']([A-Za-z0-9/+=]{40})["']/gi },
@@ -73,7 +55,6 @@ export const SECRET_RULES: SecretRule[] = [
   {
     id: 'assigned-secret',
     label: 'Password / secret / API key in code',
-    // `[A-Za-z_]*` so camelCase names match too: dbPassword, myApiKey, authToken.
     pattern:
       /\b[A-Za-z_]*(?:password|passwd|pwd|secret|client[_-]?secret|api[_-]?key|apikey|access[_-]?token|auth[_-]?token|refresh[_-]?token|private[_-]?key)\b["']?\s*[:=]\s*["']([^"'\s]{8,})["']/gi,
   },
@@ -93,18 +74,13 @@ export interface Finding {
   where: FindingWhere;
   path: string;
   line: number;
-  /** The value with its middle replaced by dots. */
   masked: string;
-  /** Short commit that introduced this version of the file (history findings). */
   commit?: string;
-  /** Blob the match was found in (history findings). */
   blob?: string;
 }
 
 export interface SkippedCounts {
-  /** Too large to scan (see MAX_BLOB_BYTES). */
   large: number;
-  /** Binary content, or an extension that is never text. */
   binary: number;
 }
 
@@ -112,11 +88,8 @@ export interface ScanResult {
   findings: Finding[];
   filesScanned: number;
   blobsScanned: number;
-  /** Files/blobs the scan could not look inside. */
   skipped: SkippedCounts;
-  /** Set when the scan hit its own limits and stopped early. */
   truncated: boolean;
-  /** Distinct secret values found, for the removal step. */
   secretCount: number;
 }
 
@@ -129,10 +102,6 @@ export function maskSecret(value: string): string {
 const isBinary = (buf: Buffer) => buf.subarray(0, 8000).includes(0);
 const skipPath = (p: string) => BINARY_EXT.has(path.extname(p).toLowerCase());
 
-/**
- * Every match in one file's text. `secrets` collects finding id → literal
- * value; it stays in the main process so removal can match exactly.
- */
 export function scanText(
   text: string,
   where: FindingWhere,
@@ -163,7 +132,7 @@ export function scanText(
       const lineText = text.slice(lineStarts[lineIndex], lineStarts[lineIndex + 1] ?? text.length);
       if (lineText.includes(IGNORE_MARKER)) continue;
       const id = `${where}:${extra.blob ?? filePath}:${lineIndex + 1}:${rule.id}:${found.length}`;
-      secrets.set(id, value); // literal value, main process only
+      secrets.set(id, value);
       found.push({
         id,
         rule: rule.id,
@@ -180,28 +149,15 @@ export function scanText(
   return found;
 }
 
-// ---- deep scan candidates ------------------------------------------------------------
-//
-// The pattern rules only find shapes they know. For the optional AI pass, this
-// picks out lines that *could* hold a secret — a long, random-looking value, or
-// any value assigned to a secret-sounding name — and the local model decides.
-// Cheap, deterministic pre-filtering keeps the model's work small.
 
 const SECRET_WORDS =
   /\b(?:pass(?:word|wd|phrase)?|pwd|secret|token|api[_-]?key|apikey|auth|credential|private[_-]?key|access[_-]?key|session|cookie|signature|salt|cert)\b/i;
 
-/**
- * "dbPassword" → "db Password", "SESSION_SECRET" → "SESSION SECRET". Both
- * camel humps and underscores hide the word from \b, and identifiers are
- * written both ways.
- */
 const splitIdentifiers = (text: string) => text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_+/g, ' ');
 const hasSecretWord = (line: string) => SECRET_WORDS.test(splitIdentifiers(line));
-/** Values that are obviously not credentials even though they look random. */
 const NOT_SECRET = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$|^\d+(?:\.\d+)*$|^#[0-9a-fA-F]{3,8}$|^(?:https?|file):\/\/[^\s"']*$/;
 const MAX_CANDIDATES = 200;
 
-/** Shannon entropy per character — high means "looks random". */
 export function entropy(value: string): number {
   const counts = new Map<string, number>();
   for (const ch of value) counts.set(ch, (counts.get(ch) ?? 0) + 1);
@@ -219,15 +175,12 @@ export interface Candidate {
   line: number;
   where: FindingWhere;
   commit?: string;
-  /** The line, trimmed and capped — what the model is shown. */
   snippet: string;
-  /** The value itself, so a confirmed candidate can be removed. */
   value: string;
 }
 
 const VALUE_RE = /["'`]([^"'`\s]{10,200})["'`]|[:=]\s*([A-Za-z0-9_\-./+=]{16,200})\s*$|\b([A-Za-z0-9_\-]{24,200})\b/g;
 
-/** Suspicious values on one line, ignoring anything the rules already found. */
 export function candidateValues(line: string, known: Set<string>): string[] {
   const keyed = hasSecretWord(line);
   const out: string[] = [];
@@ -238,7 +191,6 @@ export function candidateValues(line: string, known: Set<string>): string[] {
     if (value.length < 10 || value.length > 200) continue;
     if (NOT_SECRET.test(value) || !looksReal(value)) continue;
     const bits = entropy(value);
-    // A secret-sounding name lowers the bar; otherwise the value must look random.
     if (keyed ? bits >= 2.2 : bits >= 3.6 && value.length >= 20) out.push(value);
   }
   return out;
@@ -260,11 +212,6 @@ interface WalkTotals {
   truncated: boolean;
 }
 
-/**
- * Every readable text in the repository: the working tree (tracked and
- * untracked, respecting .gitignore) and every blob on every ref. `onText`
- * returns false to stop early. Shared by the rule scan and the AI pre-filter.
- */
 async function walkTexts(root: string, onText: (unit: TextUnit) => boolean | Promise<boolean>): Promise<WalkTotals> {
   const totals: WalkTotals = { filesScanned: 0, blobsScanned: 0, skipped: { large: 0, binary: 0 }, truncated: false };
 
@@ -295,13 +242,12 @@ async function walkTexts(root: string, onText: (unit: TextUnit) => boolean | Pro
     }
   }
 
-  // `rev-list --objects` lists each object once, with the path it was seen at.
   const objects = (await runGit(['rev-list', '--objects', '--all'], root)).split(/\r?\n/);
   const blobs: { sha: string; path: string }[] = [];
   const seen = new Set<string>();
   for (const line of objects) {
     const space = line.indexOf(' ');
-    if (space < 0) continue; // commits and trees have no path
+    if (space < 0) continue;
     const sha = line.slice(0, space);
     const p = line.slice(space + 1);
     if (seen.has(sha)) continue;
@@ -336,18 +282,11 @@ async function walkTexts(root: string, onText: (unit: TextUnit) => boolean | Pro
   return totals;
 }
 
-/** Short hash of the commit that introduced a blob — enough to point at it. */
 async function introducedBy(root: string, sha: string): Promise<string | undefined> {
   const out = (await runGit(['log', '--all', '--format=%h', '-1', `--find-object=${sha}`], root).catch(() => '')).trim();
   return out.split(/\r?\n/)[0] || undefined;
 }
 
-/**
- * Scan the working tree and the whole history with the rules.
- *
- * `secrets` comes back holding the literal values (never sent to the renderer)
- * so removeSecrets() can match them exactly.
- */
 export async function scanRepository(root: string): Promise<ScanResult & { secrets: Map<string, string> }> {
   const secrets = new Map<string, string>();
   const findings: Finding[] = [];
@@ -362,7 +301,6 @@ export async function scanRepository(root: string): Promise<ScanResult & { secre
     return findings.length < MAX_FINDINGS;
   });
 
-  // A value present in the working tree and in history is one secret, two findings.
   const distinct = new Set(secrets.values()).size;
   return {
     findings,
@@ -375,13 +313,6 @@ export async function scanRepository(root: string): Promise<ScanResult & { secre
   };
 }
 
-/**
- * Scan only what is staged — the content `git commit` is about to record.
- *
- * Reads each staged path out of the index (`git show :path`) rather than off
- * disk: a file can be staged with a secret and then edited, and it is the
- * staged version that would reach the history. Deletions have nothing to scan.
- */
 export async function scanStaged(root: string): Promise<ScanResult & { secrets: Map<string, string> }> {
   const secrets = new Map<string, string>();
   const findings: Finding[] = [];
@@ -389,7 +320,6 @@ export async function scanStaged(root: string): Promise<ScanResult & { secrets: 
   let filesScanned = 0;
   let truncated = false;
 
-  // ACMR: added, copied, modified, renamed — everything with staged content.
   const staged = nul(await runGit(['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], root));
   for (const rel of staged) {
     if (skipPath(rel)) {
@@ -428,11 +358,6 @@ export async function scanStaged(root: string): Promise<ScanResult & { secrets: 
   };
 }
 
-/**
- * Lines the rules didn't match but that could still hold a credential, for the
- * optional AI pass. Returns at most MAX_CANDIDATES, deduplicated by value, with
- * secret-sounding lines first so the cap keeps the most likely ones.
- */
 export async function collectCandidates(
   root: string,
   known: Set<string>,
@@ -467,7 +392,6 @@ export async function collectCandidates(
 
   const ranked = [...byValue.values()].sort((a, b) => Number(b.keyed) - Number(a.keyed) || b.value.length - a.value.length);
   const candidates = ranked.slice(0, MAX_CANDIDATES).map(({ keyed: _keyed, ...c }) => c);
-  // Only for the few that are kept: which commit they came from.
   for (const c of candidates) {
     if (c.where === 'history') {
       const blob = c.id.split(':')[2];

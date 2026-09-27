@@ -1,5 +1,3 @@
-// Google account gate for the Email and Drive sections: set up the OAuth
-// client → connect an account → (connected) a small account strip.
 
 import { useState, type ReactNode } from 'react';
 import { ExternalLink, KeyRound, Loader2, LogOut, ShieldCheck } from 'lucide-react';
@@ -16,17 +14,12 @@ const inputClass =
 
 export { panelButton, primaryButton } from './styles';
 
-/**
- * Renders `children` once the user is logged in (Auth0) and a Google account
- * with `need` access is connected.
- */
 export function GoogleGate({ need, children }: { need: 'gmail' | 'drive'; children: ReactNode }) {
   const { status, error } = useGoogle();
   const { status: app } = useAuth0();
   const [connecting, setConnecting] = useState(false);
   const [problem, setProblem] = useState('');
 
-  // Chat works logged out; Gmail and Drive need the app login first.
   if (!app?.loggedIn) return <LoginRequired what={need === 'gmail' ? 'Email' : 'Google Drive'} />;
 
   if (!status) {
@@ -93,7 +86,6 @@ export function GoogleGate({ need, children }: { need: 'gmail' | 'drive'; childr
   return <>{children}</>;
 }
 
-/** Signed-in address + disconnect, shown at the top of a connected section. */
 export function AccountStrip() {
   const { status } = useGoogle();
   const [busy, setBusy] = useState(false);

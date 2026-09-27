@@ -1,45 +1,26 @@
-/*
-  SVN Studio, re-skinned for Imaginarium.
-
-  Layout and component structure follow SVN Studio's web client. The palette does
-  not: every colour resolves to an Imaginarium token, so the tab uses the same
-  glass panels, ink background and mono micro-labels as Chat / Research / PDF —
-  and follows the accent chosen in Settings (--color-neon), live.
-
-  Everything is scoped under .svn-studio and prefixed svn-, and the tokens are
-  --svn-* rather than SVN Studio's --color-* / --radius-*: several of those names
-  (--radius-sm/md/lg, --font-sans) are Tailwind v4 theme variables, and
-  redefining them would silently restyle any Tailwind utility inside the tab.
-*/
 
 .svn-studio {
-  /* Surfaces */
-  --svn-surface: var(--color-glass); /* panels — same glass as the rest of the app */
-  --svn-surface-2: rgba(255, 255, 255, 0.035); /* hover / nested */
-  --svn-elevated: #16141f; /* menus, modals, popovers */
+  --svn-surface: var(--color-glass);
+  --svn-surface-2: rgba(255, 255, 255, 0.035);
+  --svn-elevated: #16141f;
   --svn-editor: var(--color-ink);
   --svn-input: rgba(0, 0, 0, 0.22);
   --svn-border: var(--color-glass-border);
   --svn-border-strong: rgba(255, 255, 255, 0.14);
 
-  /* Text */
   --svn-text: #ece9f1;
   --svn-muted: var(--color-muted);
   --svn-faint: rgba(236, 233, 241, 0.32);
 
-  /* Accent: the user's glow colour */
   --svn-accent: var(--color-neon);
   --svn-accent-soft: var(--color-neon-soft);
   --svn-accent-tint: color-mix(in srgb, var(--color-neon) 14%, transparent);
   --svn-glow:
     0 0 18px color-mix(in srgb, var(--color-neon) 35%, transparent),
     0 0 4px color-mix(in srgb, var(--color-neon) 50%, transparent);
-  /* AI actions get a violet-shifted accent so they read as distinct from SVN
-     actions, while still following the chosen theme colour. */
   --svn-ai: color-mix(in srgb, var(--color-neon) 55%, #8b5cf6);
   --svn-link: var(--color-teal);
 
-  /* Status semantics (kept meaningful, tuned for the dark ink background) */
   --svn-added: var(--color-teal);
   --svn-modified: #e3b341;
   --svn-deleted: #f47067;
@@ -76,7 +57,6 @@
     cursor: not-allowed;
   }
 
-  /* Imaginarium's mono micro-label, used for every section header in the tab. */
   & .svn-label {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -85,7 +65,6 @@
     color: var(--svn-muted);
   }
 
-  /* ---- Buttons --------------------------------------------------------------- */
 
   & .svn-btn {
     display: inline-flex;
@@ -119,7 +98,6 @@
     color: var(--svn-text);
   }
 
-  /* Matches the app's primary buttons: neon fill, black text, neon glow. */
   & .svn-btn-primary {
     background: var(--svn-accent);
     color: #000;
@@ -144,7 +122,6 @@
     box-shadow: none;
   }
 
-  /* ---- In-tab toolbar (SVN Studio's title bar) --------------------------------- */
 
   & .svn-toolbar {
     display: flex;
@@ -263,7 +240,6 @@
     accent-color: var(--svn-accent);
   }
 
-  /* ---- Workspace & panels ------------------------------------------------------ */
 
   & .svn-workspace {
     display: flex;
@@ -316,7 +292,6 @@
     line-height: 1.5;
   }
 
-  /* ---- Explorer tree ----------------------------------------------------------------- */
 
   & .svn-explorer-header {
     display: flex;
@@ -502,7 +477,6 @@
     accent-color: var(--svn-accent);
   }
 
-  /* ---- Status badges --------------------------------------------------------------- */
 
   & .svn-badge {
     display: inline-block;
@@ -536,7 +510,6 @@
     color: var(--svn-conflict);
   }
 
-  /* ---- Context menu ---------------------------------------------------------------- */
 
   & .svn-menu {
     position: fixed;
@@ -577,7 +550,6 @@
     margin: 4px 0;
   }
 
-  /* ---- Editor ------------------------------------------------------------------------ */
 
   & .svn-editor-header {
     display: flex;
@@ -673,7 +645,6 @@
     line-height: 1.5;
   }
 
-  /* ---- Commit panel / composer ----------------------------------------------------------- */
 
   & .svn-panel__status {
     display: flex;
@@ -681,8 +652,6 @@
     gap: 8px;
   }
 
-  /* History button — sits where SVN Studio's clean/dirty status dot was, and
-     keeps its colour cue: green when clean, accent when there are changes. */
   & .svn-panel__history {
     width: 26px;
     height: 26px;
@@ -824,7 +793,6 @@
     text-align: center;
   }
 
-  /* ---- AI assist box ------------------------------------------------------------------- */
 
   & .svn-ai-box {
     margin: 2px 0 10px;
@@ -995,7 +963,6 @@
     box-shadow: none;
   }
 
-  /* The box sits near the bottom of the panel, so menus open upward. */
   & .svn-ai-pop {
     position: absolute;
     bottom: calc(100% + 6px);
@@ -1050,7 +1017,6 @@
     overflow-y: auto;
   }
 
-  /* ---- History --------------------------------------------------------------------------- */
 
   & .svn-history__entry {
     padding: 10px 14px;
@@ -1100,7 +1066,6 @@
     color: var(--svn-muted);
   }
 
-  /* ---- Modals ------------------------------------------------------------------------------ */
 
   & .svn-modal-overlay {
     position: fixed;
@@ -1214,7 +1179,6 @@
     color: var(--svn-success);
   }
 
-  /* AI review result */
   & .svn-review {
     width: 780px;
     display: flex;
@@ -1290,7 +1254,6 @@
     animation: svn-blink 1s steps(1) infinite;
   }
 
-  /* ---- Command palette ---------------------------------------------------------------------- */
 
   & .svn-palette-overlay {
     position: fixed;
@@ -1382,10 +1345,7 @@
     white-space: nowrap;
   }
 
-  /* ---- Status bar -------------------------------------------------------------------------- */
 
-  /* SVN Studio used a solid accent bar; here it's the app's quiet mono footer
-     style, with the accent reserved for the live dots. */
   & .svn-statusbar {
     display: flex;
     align-items: center;
@@ -1434,10 +1394,7 @@
     animation: svn-pulse 1.2s ease-in-out infinite;
   }
 
-  /* ---- Resize handle ------------------------------------------------------------------------ */
 
-  /* Sits exactly over the flex gap (negative margins cancel it on both sides),
-     so the visual spacing is unchanged. */
   & .svn-resize {
     flex-shrink: 0;
     width: var(--svn-gap);
@@ -1471,8 +1428,6 @@
   }
 }
 
-/* Outside the scope: the drag state lives on <body> so the cursor stays right
-   even when the pointer leaves the handle. */
 body.svn-is-resizing {
   cursor: col-resize;
   user-select: none;

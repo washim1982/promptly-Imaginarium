@@ -1,14 +1,3 @@
-// Removing credentials from a repository: the files as they are now, and the
-// history behind them.
-//
-// The history is rewritten with git's own plumbing rather than filter-branch:
-// only the blobs that actually contain a secret are rewritten, every commit
-// keeps its message, author, committer and dates, and commits from before the
-// secret appeared keep their original hashes. A bundle of the old history is
-// written first, so the rewrite can always be undone.
-//
-// What this cannot undo: copies already pushed elsewhere. A removed credential
-// must still be treated as leaked and rotated.
 
 import { spawn } from 'node:child_process';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -19,20 +8,16 @@ import { MAX_BLOB_BYTES } from './secretScan';
 export const REPLACEMENT = '***REMOVED***';
 
 export interface RemovalSummary {
-  /** Bundle holding the history as it was before the rewrite. */
   backupPath: string;
   filesChanged: string[];
   blobsRewritten: number;
   commitsRewritten: number;
   refsUpdated: string[];
-  /** Annotated/signed tags still pointing at old commits (left alone). */
   tagsSkipped: string[];
-  /** Commits whose GPG signature had to be dropped because their content changed. */
   signaturesDropped: number;
   historyRewritten: boolean;
 }
 
-/** git with data on stdin, returning raw bytes (for cat-file / hash-object / mktree). */
 function gitIn(args: string[], cwd: string, input?: Buffer | string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const child = spawn('git', args, { cwd, windowsHide: true });
@@ -58,7 +43,6 @@ const containsAny = (text: string, values: string[]) => values.some((v) => v && 
 
 const nul = (raw: string) => raw.split('\0').filter(Boolean);
 
-/** Replace the values in the files on disk (tracked and untracked). */
 async function scrubWorkingTree(root: string, values: string[]): Promise<string[]> {
   const [tracked, untracked] = await Promise.all([
     runGit(['ls-files', '-z'], root),
@@ -79,7 +63,6 @@ async function scrubWorkingTree(root: string, values: string[]): Promise<string[
   return changed;
 }
 
-/** Old blob → rewritten blob, for every blob in the history holding a secret. */
 async function rewriteBlobs(root: string, values: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const objects = (await runGit(['rev-list', '--objects', '--all'], root)).split(/\r?\n/);
@@ -104,7 +87,6 @@ async function rewriteBlobs(root: string, values: string[]): Promise<Map<string,
   return map;
 }
 
-/** Rewrite a tree recursively, reusing the original when nothing inside changed. */
 async function rewriteTree(root: string, tree: string, blobs: Map<string, string>, cache: Map<string, string>): Promise<string> {
   const cached = cache.get(tree);
   if (cached) return cached;
@@ -135,7 +117,6 @@ interface CommitParts {
   signed: boolean;
 }
 
-/** Split a raw commit object into the parts commit-tree needs back. */
 export function parseCommit(raw: string): CommitParts {
   const split = raw.indexOf('\n\n');
   const header = raw.slice(0, split);
@@ -151,7 +132,6 @@ export function parseCommit(raw: string): CommitParts {
   return parts;
 }
 
-/** "Name <email> 1699999999 +0530" → the three env values git wants. */
 export function identityEnv(line: string, prefix: 'AUTHOR' | 'COMMITTER'): Record<string, string> {
   const match = /^(.*) <([^>]*)> (\d+ [+-]\d{4})$/.exec(line.trim());
   if (!match) return {};
@@ -180,26 +160,19 @@ function commitTree(root: string, tree: string, parents: string[], message: stri
   });
 }
 
-/**
- * Remove `values` from the working tree and from every commit that contains
- * them. Returns what changed; the caller shows it and offers the force-push.
- */
 export async function removeSecrets(repo: string, values: string[]): Promise<RemovalSummary> {
   const root = path.resolve((await runGit(['rev-parse', '--show-toplevel'], repo)).trim());
   const clean = [...new Set(values.map((v) => String(v ?? '')).filter((v) => v.length >= 6))];
   if (!clean.length) throw new Error('Nothing selected to remove.');
 
-  // 1. Backup the whole history first — this is the undo.
   const backupDir = path.join(root, '.git', 'imaginarium-backups');
   await mkdir(backupDir, { recursive: true });
   const backupPath = path.join(backupDir, `before-secret-removal-${new Date().toISOString().replace(/[:.]/g, '-')}.bundle`);
   const hasCommits = Boolean((await runGit(['rev-list', '-n', '1', '--all'], root).catch(() => '')).trim());
   if (hasCommits) await runGit(['bundle', 'create', backupPath, '--all'], root, { timeout: 600_000 });
 
-  // 2. The files as they are now.
   const filesChanged = await scrubWorkingTree(root, clean);
 
-  // 3. The history.
   const blobs = hasCommits ? await rewriteBlobs(root, clean) : new Map<string, string>();
   const summary: RemovalSummary = {
     backupPath: hasCommits ? backupPath : '',
@@ -223,22 +196,21 @@ export async function removeSecrets(repo: string, values: string[]): Promise<Rem
     const newTree = await rewriteTree(root, parts.tree, blobs, treeCache);
     const newParents = parts.parents.map((p) => mapped.get(p) ?? p);
     const parentsChanged = newParents.some((p, i) => p !== parts.parents[i]);
-    if (newTree === parts.tree && !parentsChanged) continue; // untouched commit keeps its hash
+    if (newTree === parts.tree && !parentsChanged) continue;
     const env = { ...identityEnv(parts.authorLine, 'AUTHOR'), ...identityEnv(parts.committerLine, 'COMMITTER') };
     const newSha = await commitTree(root, newTree, newParents, parts.message, env);
     mapped.set(sha, newSha);
     summary.commitsRewritten++;
-    if (parts.signed) summary.signaturesDropped++; // the old signature can't cover new content
+    if (parts.signed) summary.signaturesDropped++;
   }
 
-  // 4. Point the refs at the rewritten commits.
   const refs = (await runGit(['for-each-ref', '--format=%(refname) %(objecttype) %(objectname)'], root)).split(/\r?\n/);
   for (const line of refs.filter(Boolean)) {
     const [refname, type, objectname] = line.trim().split(' ');
-    if (refname.startsWith('refs/remotes/')) continue; // updated by the next fetch/push
+    if (refname.startsWith('refs/remotes/')) continue;
     if (type === 'tag') {
       if (summary.commitsRewritten) summary.tagsSkipped.push(refname);
-      continue; // annotated tag: rewriting would break its own signature/metadata
+      continue;
     }
     const next = mapped.get(objectname);
     if (!next) continue;
@@ -246,11 +218,9 @@ export async function removeSecrets(repo: string, values: string[]): Promise<Rem
     summary.refsUpdated.push(refname);
   }
 
-  // 5. Keep the working tree and index exactly as they are, on the new HEAD.
   const head = (await runGit(['rev-parse', 'HEAD'], root).catch(() => '')).trim();
   if (head && mapped.has(head)) await runGit(['reset', '--soft', mapped.get(head)!], root);
 
-  // 6. Drop the old objects locally (the bundle is the backup).
   await runGit(['reflog', 'expire', '--expire=now', '--expire-unreachable=now', '--all'], root).catch(() => {});
   await runGit(['gc', '--prune=now', '--quiet'], root, { timeout: 600_000 }).catch(() => {});
 
@@ -258,10 +228,6 @@ export async function removeSecrets(repo: string, values: string[]): Promise<Rem
   return summary;
 }
 
-/**
- * Publish a rewritten branch. --force-with-lease so a push is refused if the
- * remote moved since the last fetch (someone else pushed meanwhile).
- */
 export async function forcePush(repo: string, remote: string, branch: string): Promise<string> {
   const root = path.resolve((await runGit(['rev-parse', '--show-toplevel'], repo)).trim());
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(remote)) throw new Error('Invalid remote name.');

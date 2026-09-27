@@ -1,27 +1,3 @@
-// The agent loop — a port of Odysseus's stream_agent_loop (src/agent_loop.py).
-//
-// Each round: manage the context (compact, then trim), stream one model
-// response, parse tool blocks out of it, run them (asking the user first for
-// anything effectful), feed the results back as untrusted data, and go again.
-// The model ends the turn by answering without a tool call.
-//
-// What's kept from Odysseus, by name:
-//   - round cap with a "Continue" affordance when it's hit mid-task
-//   - tool-call budget per turn
-//   - loop-breaker: a repeated call with no new text, or one identical call
-//     fired too often, forces a single tool-free "answer or say you're
-//     blocked" round
-//   - intent-without-action supervisor: "Let me check the logs" with no call
-//     gets a nudge (capped at 2)
-//   - grace synthesis: if the forced round still writes nothing, one plain call
-//     to write the answer from what was gathered
-//   - empty-response fallback
-//   - tool output wrapped as untrusted data
-// What's dropped: provider routing/fallbacks, native function calling, the
-// email/calendar/cookbook domain logic, plan mode and the verifier sub-agent.
-//
-// Everything that touches the model, tools or UI is injected, so the loop runs
-// unchanged under a scripted fake model in tests.
 
 import {
   estimateTokens,
@@ -39,42 +15,32 @@ export interface ToolRuntime {
   tags: string[];
   primaryArgs: Record<string, string | undefined>;
   describe(call: ToolCall): string;
-  /** Non-null when the call must be approved by the user first — the reason why. */
   approvalReason(call: ToolCall): string | null;
   run(call: ToolCall, signal: AbortSignal): Promise<{ ok: boolean; output: string }>;
 }
 
 export interface AgentLoopOptions {
-  /** [system prompt, ...prior chat turns, current request]. */
   messages: AgentMessage[];
   llm: LlmFn;
   tools: ToolRuntime;
-  /** Input-token budget for one request. */
   budget: number;
   maxRounds?: number;
   maxToolCalls?: number;
   signal: AbortSignal;
   onEvent: (event: AgentEvent) => void;
-  /** Resolve true to run an effectful call, false to decline it. */
   requestApproval: (step: AgentStep) => Promise<boolean>;
   newId?: () => string;
 }
 
 export interface AgentLoopResult {
-  /** Final prose from every round, tool blocks stripped — what gets saved. */
   text: string;
   rounds: number;
   toolCalls: number;
-  /** Ran out of rounds while still working: offer Continue. */
   exhausted: boolean;
   stopped: boolean;
-  /** Set if this turn compacted prior chat history, for persisting. */
   compaction?: { summary: string; historySummarized: number };
 }
 
-// Odysseus uses 50 rounds and a runaway threshold of 15 identical calls. Every
-// round here re-prefills the whole context on a local GPU and the window is a
-// few thousand tokens, so both are scaled down.
 export const DEFAULT_MAX_ROUNDS = 12;
 export const DEFAULT_MAX_TOOL_CALLS = 24;
 const RUNAWAY_THRESHOLD = 5;
@@ -82,8 +48,6 @@ const STUCK_ROUNDS_LIMIT = 3;
 const RECENT_SIGNATURES = 6;
 const MAX_INTENT_NUDGES = 2;
 
-// Odysseus's "I said I would, then didn't" detector: an announced action with
-// an action verb, so harmless text like "let me know" never triggers it.
 const INTENT_RE = new RegExp(
   "(?:^|\\n)\\s*(?:let me|i'?ll|i will|i need to|we need to|need to|i should|we should|" +
     "i must|we must|going to|let's)\\s+(?:tail|check|investigate|look at|see|read|fetch|" +
@@ -149,16 +113,12 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
 
   const summarize = (prompt: AgentMessage[]) => collect(llm(normalizeTurns(prompt), signal));
   const notice = (kind: AgentNoticeKind, message: string) => onEvent({ type: 'notice', kind, message });
-  // Repeated compaction inside one turn means the work doesn't fit the window:
-  // the model keeps losing what it just read and starts over. Say so once,
-  // rather than letting it grind through its round budget.
   let compactions = 0;
 
   for (round = 1; round <= maxRounds; round++) {
     if (signal.aborted) break;
     onEvent({ type: 'round_start', round });
 
-    // ── Context management (Odysseus: maybe_compact, then trim_for_context) ──
     const compacted = await maybeCompact(messages, budget, summarize);
     if (signal.aborted) break;
     if (compacted.compacted) {
@@ -181,7 +141,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     }
     onEvent({ type: 'context', usage: { used: estimateTokens(request), budget } });
 
-    // ── One model response ──
     let raw = '';
     for await (const chunk of llm(normalizeTurns(request), signal)) {
       raw += chunk;
@@ -192,7 +151,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     onEvent({ type: 'text', round, text });
     const calls = forceAnswer ? [] : parseToolBlocks(raw, tools.tags, tools.primaryArgs);
 
-    // ── Forced answer round: tools were refused; take the prose or salvage ──
     if (forceAnswer) {
       let answer = text;
       if (!answer) {
@@ -219,15 +177,12 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       break;
     }
 
-    // ── No tool call: the model is done — unless it promised an action ──
     if (calls.length === 0) {
       const promise = INTENT_RE.exec(text);
       const looksLikePromise = promise !== null && text.length < 400 && !text.includes('```');
       if (looksLikePromise && nudges < MAX_INTENT_NUDGES) {
         nudges += 1;
         const phrase = promise![0].trim();
-        // Plain prose — no tool call in it, so not kind 'tool_call' (that kind
-        // pairs with a following tool_result when trimming).
         messages.push({ role: 'assistant', content: raw });
         messages.push({ role: 'user', kind: 'supervisor', content: intentNudge(phrase) });
         notice('intent_nudge', `The model said "${phrase}" without running a tool — nudging it to act.`);
@@ -245,7 +200,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       break;
     }
 
-    // ── Loop-breaker ──
     const sig = calls.map(callSignature).sort().join('|');
     const isRepeat = recentSigs.includes(sig);
     recentSigs.push(sig);
@@ -254,7 +208,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       const s = callSignature(c);
       callFreq.set(s, (callFreq.get(s) ?? 0) + 1);
     }
-    // A round is useless only if it repeats a recent call AND says nothing new.
     stuckRounds = isRepeat && !text ? stuckRounds + 1 : 0;
     const runaway = [...callFreq.entries()].find(([, n]) => n >= RUNAWAY_THRESHOLD)?.[0];
     if (stuckRounds >= STUCK_ROUNDS_LIMIT || runaway) {
@@ -268,7 +221,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       continue;
     }
 
-    // ── Run the tools ──
     const results: string[] = [];
     let budgetHit = false;
     for (const call of calls) {
@@ -319,7 +271,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
     }
     if (signal.aborted) break;
 
-    // Feed the round back: the model's own call, then the results as data.
     messages.push({ role: 'assistant', kind: 'tool_call', content: raw });
     if (results.length) messages.push(untrustedToolMessage('tool execution results', results.join('\n\n')));
     if (text) prose.push(text);
@@ -332,7 +283,6 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
   }
 
   const stopped = signal.aborted;
-  // The for-loop ran every round without a break: cut off mid-task.
   const exhausted = !finished && !stopped && round > maxRounds;
   if (exhausted) {
     notice('rounds_exhausted', `Reached the ${maxRounds}-round limit while still working.`);

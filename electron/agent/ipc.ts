@@ -1,6 +1,3 @@
-// IPC surface for the chat agent's tools. The workspace root lives here in
-// the main process, chosen only through a native folder picker — the model
-// never supplies a root, only paths relative to it.
 
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -14,7 +11,7 @@ async function getWorkspace(): Promise<string | null> {
     const { workspace } = JSON.parse(await readFile(settingsFile(), 'utf8')) as { workspace?: string };
     if (!workspace) return null;
     const st = await stat(workspace).catch(() => null);
-    return st?.isDirectory() ? workspace : null; // folder moved or deleted
+    return st?.isDirectory() ? workspace : null;
   } catch {
     return null;
   }
@@ -74,8 +71,6 @@ export function registerAgentIpc(): void {
   );
   ipcMain.handle('agent:fetchUrl', async (_e, url: string) => tools.fetchUrl(String(url ?? '')));
 
-  // Chat sidebar's Workspace section: a browsable tree and whole-file reads
-  // for attaching to a message (same workspace confinement as the tools).
   ipcMain.handle('agent:listEntries', async (_e, rel: string) =>
     tools.listEntries(await requireWorkspace(), String(rel ?? '.')),
   );

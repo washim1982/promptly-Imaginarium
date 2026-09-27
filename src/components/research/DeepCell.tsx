@@ -12,14 +12,11 @@ export interface TaskCellData {
   summary?: string;
   file?: string;
   search?: string;
-  // Mechanical citation check result (researchers only).
   citations?: { verified: number; unverified: number };
-  // Content-entailment result (verifier only): claims vs. real page text.
   claims?: { supported: number; partial: number; notFound: number };
 }
 
 function clean(raw: string): string {
-  // Strip the coordination markers so the body reads as plain Markdown.
   const notes = raw.split('@@NOTES@@')[1];
   return (notes ?? raw).replace(/@@SUMMARY@@|@@NOTES@@/g, '').trim();
 }

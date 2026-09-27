@@ -1,11 +1,7 @@
-// The agent system prompt. Adapted from Odysseus's _AGENT_PREAMBLE and the
-// compact "Base rules" (_AGENT_RULES) it uses when only some tools are
-// available — trimmed for a small local model and a few-thousand-token window.
 
 import { TOOL_SPECS } from './tools';
 
 export interface PromptInput {
-  /** The user's own system prompt from Settings (persona / preferences). */
   persona: string;
   workspace: { name: string } | null;
   now: Date;

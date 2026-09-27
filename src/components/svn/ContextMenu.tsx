@@ -18,8 +18,6 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
 
-  // Keep the menu on-screen when opened near the right or bottom edge — the
-  // original rendered at the raw cursor position and could be cut off.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

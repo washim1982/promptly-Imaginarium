@@ -1,7 +1,3 @@
-// Web search client. POSTs to a SAME-ORIGIN /api/search endpoint that the server
-// (nginx in prod, Vite proxy in dev) reverse-proxies to a self-hosted OrioSearch
-// API (Tavily-compatible, backed by SearXNG with result reranking). Same-origin
-// keeps it CORS/COEP-safe for the cross-origin-isolated page.
 
 export interface SearchResult {
   title: string;
@@ -21,9 +17,6 @@ export async function webSearch(
   query: string,
   signal?: AbortSignal,
 ): Promise<SearchResult[]> {
-  // In the desktop app the main process owns search: it holds the Tavily key
-  // and calls out through Chromium's network stack, which works behind a
-  // corporate proxy. Only the browser build falls through to /api/search.
   const { hasSearchBridge, searchApi } = await import('./websearch');
   if (hasSearchBridge()) {
     signal?.throwIfAborted();
@@ -34,9 +27,6 @@ export async function webSearch(
       searchApi.query(query, 12).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
     });
   }
-  // OrioSearch's Tavily-compatible API: POST a JSON body. It aggregates SearXNG's
-  // default engine set (DuckDuckGo + others) and reranks for relevance. `basic`
-  // depth returns snippets only (fast); no full-page extraction needed here.
   const res = await fetch('/api/search', {
     method: 'POST',
     signal,
@@ -69,9 +59,6 @@ export async function webSearch(
     .slice(0, 12);
 }
 
-// Fetch REAL page content for a set of URLs via OrioSearch's /extract endpoint
-// (same-origin /api/extract -> OrioSearch POST /extract). Used by Deep Research
-// to verify claims against actual source text instead of trusting snippets.
 export interface ExtractResult {
   url: string;
   content: string;
@@ -105,8 +92,6 @@ export async function webExtract(
     .filter((r) => r.url && r.content);
 }
 
-// Ground a single chat answer in web results: gives the model the sources and
-// asks it to answer up-to-date with inline [n] citations + a Sources list.
 export function formatSearchForChat(
   results: SearchResult[],
   query: string,
@@ -125,7 +110,6 @@ ${lines.join('\n\n')}
 User question: ${query}`;
 }
 
-// Format a batch of NEW sources as a prompt block for the Research Agent.
 export function formatSearchForPrompt(
   results: SearchResult[],
   focus: string,

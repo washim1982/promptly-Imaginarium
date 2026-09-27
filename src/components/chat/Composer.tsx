@@ -17,7 +17,6 @@ export default function Composer({ compact = false }: { compact?: boolean }) {
     workspace,
     pickWorkspace,
   } = useLlm();
-  // Context usage of the latest agent round, for the meter.
   const usage = [...messages].reverse().find((m) => m.agent?.usage)?.agent?.usage;
   const [text, setText] = useState('');
   const taRef = useRef<HTMLTextAreaElement>(null);

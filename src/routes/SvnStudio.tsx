@@ -1,9 +1,3 @@
-// SVN Studio, as a tab of Imaginarium. Port of SVN Studio's web/client/src/App.tsx:
-// same three-panel IDE (Explorer · editor · Source Control / History), command
-// palette and status bar. The activity bar is gone: the toolbar toggles the
-// panels and History opens from the Source Control header. SVN calls go to the Electron main process
-// instead of an Express server, and AI review runs on the in-app LiteRT-LM engine
-// with gemma-4-E4B-it-web instead of an external OpenAI-compatible endpoint.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -46,7 +40,6 @@ const RIGHT_DEFAULT = 360;
 const LEFT_MIN = 190;
 const RIGHT_MIN = 280;
 const PANEL_MAX = 720;
-// A usable minimum editor width + gaps and side padding.
 const RESERVED_FOR_EDITOR = 360 + 72;
 
 function clampPanel(value: number, min: number, otherPanelWidth: number): number {
@@ -54,8 +47,6 @@ function clampPanel(value: number, min: number, otherPanelWidth: number): number
   return Math.round(Math.max(min, Math.min(value, Math.max(min, max))));
 }
 
-// Panel widths are a per-viewer layout preference, so localStorage fits. It can
-// throw (blocked storage) — fall back to defaults silently.
 function usePanelWidth(key: string, fallback: number) {
   const [width, setWidthState] = useState(() => {
     try {
@@ -71,7 +62,6 @@ function usePanelWidth(key: string, fallback: number) {
       try {
         localStorage.setItem(key, String(Math.round(next)));
       } catch {
-        /* width still applies for this session */
       }
     },
     [key],
@@ -95,8 +85,6 @@ export default function SvnStudio() {
   const [loadingFile, setLoadingFile] = useState(false);
   const [editable, setEditable] = useState(false);
   const [busy, setBusy] = useState(false);
-  // What the right-hand panel shows. History opens from the button in the
-  // Source Control header (SVN Studio's activity bar was removed).
   const [activeView, setActiveView] = useState<'commit' | 'history'>('commit');
   const [historyEntries, setHistoryEntries] = useState<SvnLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -119,7 +107,6 @@ export default function SvnStudio() {
   const effectiveLeft = leftPanelVisible ? leftWidth : 0;
   const effectiveRight = rightPanelVisible ? rightWidth : 0;
 
-  // ---- AI review model ----------------------------------------------------------
 
   const reviewModel = findReviewModel(llm.models);
   const reviewModelState: ReviewModelState = !reviewModel
@@ -128,13 +115,10 @@ export default function SvnStudio() {
       ? 'ready'
       : 'will-load';
 
-  // Values read *after* an await must come from refs: the closure that started
-  // the review predates the model load it triggered.
   const latest = useRef({ llm, reviewModel });
   latest.current = { llm, reviewModel };
   const stoppedRef = useRef(false);
 
-  // ---- data ------------------------------------------------------------------------
 
   const refreshTree = useCallback(async () => {
     try {
@@ -163,7 +147,6 @@ export default function SvnStudio() {
     void loadSettings();
   }, [loadSettings]);
 
-  // First visit with nothing configured: open Settings straight away.
   useEffect(() => {
     if (configured === false) setSettingsOpen(true);
   }, [configured]);
@@ -203,7 +186,6 @@ export default function SvnStudio() {
     }
   }
 
-  /** SVN Studio switched files without asking, discarding unsaved edits. */
   function confirmDiscard(): boolean {
     return !dirty || window.confirm(`Discard unsaved changes to ${baseName(selectedPath!)}?`);
   }
@@ -343,7 +325,6 @@ export default function SvnStudio() {
     onViewHistory: (path) => void loadHistory(path),
   };
 
-  // ---- AI review ------------------------------------------------------------------
 
   async function runAiReview(scope: AiScope, question: string, scopeLabel: string) {
     const target = latest.current.reviewModel;
@@ -366,14 +347,11 @@ export default function SvnStudio() {
     const meta = { scopeLabel, question, model: target.label };
     stoppedRef.current = false;
 
-    // The engine holds one model at a time. If a different one is loaded,
-    // switch to E4B — which is also what Chat will use afterwards.
     const current = latest.current.llm;
     if (!(current.activeModel?.id === target.id && current.status === 'ready')) {
       setAiReview({ status: 'loading-model', ...meta });
       const ok = await current.loadModel({ type: 'library', id: target.id });
       if (!ok) {
-        // Let React commit the error state set during the failed load.
         await new Promise((r) => setTimeout(r, 0));
         setAiReview({
           status: 'error',
@@ -414,7 +392,6 @@ export default function SvnStudio() {
     llm.cancel();
   }
 
-  // ---- derived -----------------------------------------------------------------------
 
   const { changed: changedCount, conflicted: conflictedCount } = useMemo(() => countStatuses(tree), [tree]);
   const flatFiles = useMemo(() => flattenTree(tree), [tree]);
@@ -444,11 +421,10 @@ export default function SvnStudio() {
     { id: 'settings', label: 'Preferences: SVN Settings', run: () => setSettingsOpen(true) },
   ];
 
-  // ---- render ---------------------------------------------------------------------------
 
   return (
     <div className="svn-studio">
-      {/* SVN Studio's title bar, minus what the app window already provides. */}
+      {}
       <div className="svn-toolbar">
         <div className="svn-toolbar__group">
           <button className="svn-toolbar__icon" disabled={navIndex <= 0} onClick={() => goTo(navIndex - 1)} title="Back">

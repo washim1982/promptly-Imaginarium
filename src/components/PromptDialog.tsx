@@ -1,9 +1,3 @@
-// In-app replacement for window.prompt().
-//
-// Electron does not implement prompt() — it throws "prompt() is not supported."
-// The web build used it for renaming chats, and SVN Studio used it for new
-// file / new folder / rename, so all of those silently failed on the desktop.
-// usePrompt() gives the same "ask for a string" call, as a themed dialog.
 
 import {
   createContext,
@@ -21,7 +15,6 @@ export interface PromptOptions {
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
-  /** Return an error message to block submission, or null if the value is fine. */
   validate?: (value: string) => string | null;
 }
 
@@ -75,7 +68,6 @@ function PromptModal({
   const error = options.validate?.(value) ?? null;
   const blank = !value.trim();
 
-  // Select the name but not the extension, like Explorer's rename.
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;

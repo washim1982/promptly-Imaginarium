@@ -19,7 +19,6 @@ export default function ConversationSidebar({
   embedded = false,
 }: {
   onNavigate?: () => void;
-  /** Inside the chat sidebar's History section: no card, no New chat (the sidebar has one), plus a filter. */
   embedded?: boolean;
 }) {
   const {
@@ -94,7 +93,6 @@ export default function ConversationSidebar({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    // window.prompt() throws in Electron; use the in-app dialog.
                     void ask({ title: 'Rename conversation', defaultValue: c.title, confirmLabel: 'Rename' }).then(
                       (t) => {
                         if (t != null) void renameConversation(c.id, t);

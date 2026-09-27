@@ -1,19 +1,3 @@
-// The model library, from the renderer's side.
-//
-// This replaces the browser build's OPFS cache. There, a ~2 GB .litertlm had to
-// be copied byte-for-byte into origin-private storage before it could be used,
-// which is why that build could only justify two fixed model slots. Here the app
-// only remembers paths, so the library is open-ended — any .litertlm the user
-// browses to is a first-class model — and the file is streamed off disk:
-//
-//   listModels()                  -> everything in the library
-//   addModels()                   -> native multi-select picker, validates each
-//   removeModel / renameModel / revealModel
-//   downloadModel(url, file, cb)  -> Hugging Face -> userData -> library entry
-//   openModelStream(entry, cb)    -> ReadableStream fed straight to the engine
-//
-// Validation (the "LITERTLM" magic + a minimum size) happens in the main
-// process, which can check the first 8 bytes without reading the whole file.
 
 import { requireDesktop } from './desktop';
 import type { AddResult, ModelEntry } from './models';
@@ -21,7 +5,7 @@ import type { AddResult, ModelEntry } from './models';
 export interface LoadProgress {
   receivedBytes: number;
   totalBytes: number | null;
-  ratio: number | null; // 0..1, or null when the total is unknown
+  ratio: number | null;
 }
 
 export function listModels(): Promise<ModelEntry[]> {
@@ -32,7 +16,6 @@ export function getModel(id: string): Promise<ModelEntry | null> {
   return requireDesktop().getModel(id);
 }
 
-/** Open the native picker. Returns what was added and what was rejected. */
 export function addModels(): Promise<AddResult> {
   return requireDesktop().addModels();
 }
@@ -49,12 +32,6 @@ export function revealModel(id: string): Promise<void> {
   return requireDesktop().revealModel(id);
 }
 
-/**
- * Download a suggested model from Hugging Face. Unlike the browser build (which
- * buffered the whole response in memory), the main process streams it directly
- * to a .part file and renames on success, so a cancel leaves nothing behind.
- * The result is an ordinary library entry.
- */
 export async function downloadModel(
   url: string,
   fileName: string,
@@ -81,13 +58,6 @@ export function cancelDownload(): Promise<void> {
   return requireDesktop().cancelDownload();
 }
 
-/**
- * Open a library model as a stream for `Engine.create`.
- *
- * The engine consumes a `ReadableStream<Uint8Array>`, so the bytes flow
- * disk -> main process -> wasm heap without ever materialising as a Blob. The
- * pass-through transform only counts bytes for the progress bar.
- */
 export async function openModelStream(
   id: string,
   onProgress?: (p: LoadProgress) => void,

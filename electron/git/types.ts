@@ -1,6 +1,3 @@
-// Shapes shared by the Git Studio main-process service and the renderer
-// (re-exported for the UI from src/lib/git/types.ts). Ported from Git Pilot's
-// src/types.ts.
 
 export type ChangeStatus =
   | 'added'
@@ -25,7 +22,6 @@ export interface FileChange {
 export interface RepoFile {
   path: string;
   tracked: boolean;
-  /** Present in the upstream branch's tree — i.e. already pushed. */
   uploaded: boolean;
   status?: ChangeStatus;
 }
@@ -59,13 +55,11 @@ export interface RepoIdentity {
 export interface RepoState {
   root: string;
   name: string;
-  /** Branch name, or DETACHED_HEAD. An unborn branch (no commits yet) still has its name. */
   branch: string;
   upstream: string;
   ahead: number;
   behind: number;
   files: RepoFile[];
-  /** True when the repository had more files than the explorer lists. */
   filesTruncated: boolean;
   changes: FileChange[];
   commits: CommitInfo[];

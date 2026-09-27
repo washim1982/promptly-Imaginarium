@@ -1,5 +1,3 @@
-// Renderer side of the Google account integration (electron/google/). Typed
-// passthroughs; tokens never reach this side.
 
 import { cleanError, requireDesktop } from './desktop';
 
@@ -61,7 +59,6 @@ interface GoogleBridge {
 
 const bridge = () => (requireDesktop() as unknown as { google: GoogleBridge }).google;
 
-/** Every call rejects with Electron's IPC prefix stripped. */
 export const googleApi: GoogleBridge = new Proxy({} as GoogleBridge, {
   get(_t, key: keyof GoogleBridge) {
     return async (...args: unknown[]) => {
@@ -74,7 +71,6 @@ export const googleApi: GoogleBridge = new Proxy({} as GoogleBridge, {
   },
 });
 
-/** "Ada Lovelace <ada@example.com>" → "Ada Lovelace". */
 export function senderName(from: string): string {
   const m = /^\s*"?([^"<]*?)"?\s*<[^>]+>\s*$/.exec(from);
   return (m?.[1] || from).trim() || from;

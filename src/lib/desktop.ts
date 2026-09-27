@@ -1,5 +1,3 @@
-// Typed view of the preload bridge (electron/preload.ts). Everything the
-// renderer can ask the main process to do goes through here.
 
 import type { AddResult, ModelEntry } from './models';
 
@@ -39,7 +37,6 @@ declare global {
   }
 }
 
-/** Present only inside Electron; `vite dev` in a plain browser leaves it unset. */
 export const desktop: DesktopBridge | undefined = window.imaginarium;
 
 export function requireDesktop(): DesktopBridge {
@@ -52,16 +49,12 @@ export function requireDesktop(): DesktopBridge {
   return desktop;
 }
 
-/** Open an http(s) link in the OS browser rather than inside the app window. */
 export function openExternal(url: string): void {
   if (!/^https?:\/\//i.test(url)) return;
   if (desktop) void desktop.openExternal(url).catch(() => {});
   else window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-// Electron wraps anything thrown in an ipcMain handler as
-// "Error invoking remote method 'x': Error: <real message>". Strip that so the
-// carefully-worded validation messages reach the user intact.
 const IPC_PREFIX = /^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/;
 
 export function cleanError(err: unknown): string {
@@ -69,7 +62,6 @@ export function cleanError(err: unknown): string {
   return raw.replace(IPC_PREFIX, '').trim();
 }
 
-/** True when the failure was the user cancelling an in-flight download. */
 export function isCancellation(err: unknown): boolean {
   return (
     (err instanceof Error && err.name === 'AbortError') ||
@@ -83,7 +75,6 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1e3).toFixed(0)} KB`;
 }
 
-/** Shorten a long path for display: C:\…\models\gemma-4-E2B-it-web.litertlm */
 export function shortenPath(p: string, keep = 2): string {
   const parts = p.split(/[\\/]/).filter(Boolean);
   if (parts.length <= keep + 1) return p;
