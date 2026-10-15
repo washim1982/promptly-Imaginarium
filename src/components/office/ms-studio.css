@@ -1,0 +1,510 @@
+/* MS-Studio. Scoped under .ms-studio so none of this reaches the rest of the
+   app, the same arrangement SVN Studio and Git Studio use. */
+
+.ms-studio {
+  --ms-line: color-mix(in srgb, var(--color-white) 8%, transparent);
+  --ms-muted: #8b8597;
+  --ms-surface: rgba(16, 13, 26, 0.92);
+  color: var(--color-body-text);
+}
+
+/* ---- sidebar ---- */
+
+.ms-studio .ms-sidebar {
+  display: flex;
+  width: 280px;
+  flex-shrink: 0;
+  flex-direction: column;
+  background: var(--ms-surface);
+  border-right: 1px solid var(--ms-line);
+}
+
+.ms-studio .ms-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 10px 8px;
+}
+
+.ms-studio .ms-primary {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-neon) 20%, transparent);
+  color: var(--color-neon);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+
+.ms-studio .ms-primary:hover {
+  background: color-mix(in srgb, var(--color-neon) 30%, transparent);
+}
+
+.ms-studio .ms-icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  color: color-mix(in srgb, var(--color-white) 55.0%, transparent);
+  transition: background 0.15s, color 0.15s;
+}
+
+.ms-studio .ms-icon-button:hover {
+  background: color-mix(in srgb, var(--color-white) 7.0%, transparent);
+  color: var(--color-white);
+}
+
+.ms-studio .ms-folder {
+  padding: 0 12px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ms-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-studio .ms-tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 12px;
+}
+
+.ms-studio .ms-tree-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  padding-right: 10px;
+  text-align: left;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--color-white) 72%, transparent);
+  transition: background 0.12s, color 0.12s;
+}
+
+.ms-studio .ms-tree-row:hover {
+  background: color-mix(in srgb, var(--color-white) 5%, transparent);
+  color: var(--color-white);
+}
+
+.ms-studio .ms-tree-row.active {
+  background: color-mix(in srgb, var(--color-neon) 16%, transparent);
+  color: var(--color-white);
+}
+
+.ms-studio .ms-icon.sheet { color: #4caf7d; }
+.ms-studio .ms-icon.word { color: #5b8dd9; }
+.ms-studio .ms-icon.slides { color: #d97b4f; }
+
+.ms-studio .ms-legacy {
+  margin-left: auto;
+  border-radius: 4px;
+  background: rgba(240, 178, 122, 0.16);
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  color: #f0b27a;
+}
+
+.ms-studio .ms-hint {
+  padding: 18px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ms-muted);
+}
+
+/* ---- main ---- */
+
+.ms-studio .ms-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.ms-studio .ms-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--ms-line);
+  padding: 10px 14px;
+}
+
+.ms-studio .ms-title { font-size: 14px; color: var(--color-white); }
+.ms-studio .ms-title.muted { color: color-mix(in srgb, var(--color-white) 40%, transparent); }
+
+.ms-studio .ms-kind {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ms-muted);
+}
+
+.ms-studio .ms-ghost {
+  border-radius: 8px;
+  border: 1px solid var(--ms-line);
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: color-mix(in srgb, var(--color-white) 60%, transparent);
+  transition: color 0.15s;
+}
+
+.ms-studio .ms-ghost:hover { color: var(--color-white); }
+
+.ms-studio .ms-body { min-height: 0; flex: 1; overflow: hidden; }
+
+.ms-studio .ms-empty {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 40px;
+  text-align: center;
+}
+
+.ms-studio .ms-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-neon) 18%, transparent);
+  color: var(--color-neon);
+}
+
+.ms-studio .ms-empty h2 { font-size: 18px; font-weight: 600; color: var(--color-white); }
+.ms-studio .ms-empty p { max-width: 420px; font-size: 13px; color: var(--ms-muted); }
+
+/* ---- spreadsheet grid ---- */
+
+.ms-studio .ms-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+.ms-studio .ms-grid th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #1b1726;
+  border-right: 1px solid var(--ms-line);
+  border-bottom: 1px solid var(--ms-line);
+  padding: 4px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ms-muted);
+}
+
+.ms-studio .ms-grid .ms-rownum,
+.ms-studio .ms-grid .ms-corner {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 46px;
+  text-align: right;
+}
+
+.ms-studio .ms-grid .ms-corner { z-index: 4; }
+
+.ms-studio .ms-grid td {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-right: 1px solid color-mix(in srgb, var(--color-white) 5%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-white) 5%, transparent);
+  padding: 4px 8px;
+  cursor: cell;
+}
+
+.ms-studio .ms-grid td.ms-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+
+.ms-studio .ms-grid td.ms-selected {
+  outline: 2px solid var(--color-neon);
+  outline-offset: -2px;
+}
+
+/* An edited cell stays marked until the save lands. */
+.ms-studio .ms-grid td.ms-edited {
+  background: color-mix(in srgb, var(--color-neon) 14%, transparent);
+}
+
+.ms-studio .ms-input {
+  width: 100%;
+  background: #0f0c18;
+  color: var(--color-white);
+  outline: none;
+  font: inherit;
+}
+
+/* ---- slides ---- */
+
+.ms-studio .ms-slide {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--ms-line);
+  border-radius: 10px;
+  background: #faf9fb;
+  overflow: hidden;
+}
+
+.ms-studio .ms-slide-inner { position: absolute; inset: 0; }
+
+.ms-studio .ms-shape {
+  position: absolute;
+  overflow: hidden;
+  color: #1a1724;
+  line-height: 1.25;
+  white-space: pre-wrap;
+}
+
+.ms-studio .ms-slide-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: #9a93a8;
+}
+
+/* ---- docx-preview host ---- */
+
+.ms-studio .ms-docx-host { padding: 24px 0 40px; }
+.ms-studio .ms-docx-host .docx-wrapper { background: transparent; padding: 0; }
+
+.ms-studio .ms-docx-host .docx {
+  margin: 0 auto 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* ---- assistant panel ---- */
+
+.ms-studio .ms-assistant {
+  display: flex;
+  width: 360px;
+  flex-shrink: 0;
+  flex-direction: column;
+  background: var(--ms-surface);
+  border-left: 1px solid var(--ms-line);
+}
+
+.ms-studio .ms-assistant-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--ms-line);
+  padding: 11px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-white);
+}
+
+.ms-studio .ms-quick {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ms-line);
+}
+
+.ms-studio .ms-quick button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--ms-line);
+  padding: 4px 10px;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--color-white) 70%, transparent);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ms-studio .ms-quick button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-neon) 50%, transparent);
+  color: var(--color-white);
+}
+
+.ms-studio .ms-quick button:disabled { opacity: 0.4; }
+
+.ms-studio .ms-chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ms-studio .ms-turn.user {
+  align-self: flex-end;
+  max-width: 85%;
+  border-radius: 12px 12px 2px 12px;
+  background: color-mix(in srgb, var(--color-neon) 18%, transparent);
+  padding: 7px 11px;
+  font-size: 13px;
+  color: var(--color-white);
+}
+
+.ms-studio .ms-turn.assistant {
+  font-size: 13px;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--color-white) 88%, transparent);
+}
+
+/* The shared Markdown component sets its own type scale; bring it down to
+   panel size so answers don't tower over the document. */
+.ms-studio .ms-turn.assistant > div { font-size: 13px; }
+.ms-studio .ms-turn.assistant pre { font-size: 11.5px; }
+
+.ms-studio .ms-thinking { font-size: 12px; color: var(--ms-muted); }
+
+.ms-studio .ms-assistant-error {
+  border-radius: 8px;
+  background: rgba(246, 165, 165, 0.1);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #f6a5a5;
+}
+
+.ms-studio .ms-model {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-white) 6%, transparent);
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  color: var(--ms-muted);
+}
+
+.ms-studio .ms-regen {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--ms-line);
+  padding: 3px 9px;
+  font-size: 11px;
+  color: var(--ms-muted);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.ms-studio .ms-regen:hover {
+  color: var(--color-white);
+  border-color: color-mix(in srgb, var(--color-neon) 45%, transparent);
+}
+
+.ms-studio .ms-assistant-note {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #f0b27a;
+}
+
+.ms-studio .ms-ask {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--ms-line);
+  padding: 10px 12px;
+}
+
+.ms-studio .ms-ask textarea {
+  flex: 1;
+  resize: none;
+  border-radius: 10px;
+  border: 1px solid var(--ms-line);
+  background: color-mix(in srgb, var(--color-black) 25%, transparent);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--color-white);
+  outline: none;
+}
+
+.ms-studio .ms-ask textarea:focus {
+  border-color: color-mix(in srgb, var(--color-neon) 50%, transparent);
+}
+
+.ms-studio .ms-send {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-neon) 22%, transparent);
+  color: var(--color-neon);
+  transition: background 0.15s;
+}
+
+.ms-studio .ms-send:hover:not(:disabled) { background: color-mix(in srgb, var(--color-neon) 34%, transparent); }
+.ms-studio .ms-send:disabled { opacity: 0.35; }
+.ms-studio .ms-send.stop { background: rgba(246, 165, 165, 0.18); color: #f6a5a5; }
+
+/* ---- toast ---- */
+
+.ms-studio .ms-toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--ms-line);
+  background: #15121f;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+}
+
+.ms-studio .ms-toast.success { color: #7dd3c0; }
+.ms-studio .ms-toast.error { color: #f6a5a5; }
+
+/* Light mode. The slide canvas and the Word page were already paper-coloured. */
+:root[data-theme='light'] .ms-studio {
+  --ms-line: rgba(22, 19, 31, 0.12);
+  --ms-muted: #5f5a6d;
+  --ms-surface: rgba(255, 255, 255, 0.92);
+  color: #1b1826;
+}
+
+:root[data-theme='light'] .ms-studio .ms-grid th { background: #efedf4; }
+:root[data-theme='light'] .ms-studio .ms-grid td { border-color: rgba(22, 19, 31, 0.08); }
+:root[data-theme='light'] .ms-studio .ms-input { background: #fff; color: #1b1826; }
+:root[data-theme='light'] .ms-studio .ms-title,
+:root[data-theme='light'] .ms-studio .ms-empty h2,
+:root[data-theme='light'] .ms-studio .ms-assistant-head { color: #1b1826; }
+:root[data-theme='light'] .ms-studio .ms-turn.assistant { color: rgba(27, 24, 38, 0.9); }
+:root[data-theme='light'] .ms-studio .ms-ask textarea { background: #fff; color: #1b1826; }
+:root[data-theme='light'] .ms-studio .ms-toast { background: #fff; }
+:root[data-theme='light'] .ms-studio .ms-docx-host { background: transparent; }

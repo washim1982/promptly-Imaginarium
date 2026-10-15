@@ -12,11 +12,13 @@ import Planning from './routes/Planning';
 const PdfTools = lazy(() => import('./routes/PdfTools'));
 const SvnStudio = lazy(() => import('./routes/SvnStudio'));
 const GitStudio = lazy(() => import('./routes/GitStudio'));
+const FileViewer = lazy(() => import('./routes/FileViewer'));
+const MsStudio = lazy(() => import('./routes/MsStudio'));
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { pathname } = useLocation();
-  const fullBleed = pathname.startsWith('/svn') || pathname.startsWith('/git');
+  const fullBleed = pathname.startsWith('/svn') || pathname.startsWith('/git') || pathname.startsWith('/office');
 
   return (
     <div className="flex h-full flex-col">
@@ -40,6 +42,8 @@ export default function App() {
             <Route path="/pdf" element={<PdfTools />} />
             <Route path="/svn" element={<SvnStudio />} />
             <Route path="/git" element={<GitStudio />} />
+            <Route path="/files" element={<FileViewer />} />
+            <Route path="/office" element={<MsStudio />} />
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="*" element={<Navigate to="/chat" replace />} />

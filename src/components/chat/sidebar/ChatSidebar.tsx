@@ -85,7 +85,7 @@ export default function ChatSidebar() {
 
   if (collapsed) {
     return (
-      <aside className="glass flex h-full w-[60px] shrink-0 flex-col items-center gap-1 rounded-[var(--radius-panel)] py-3" aria-label="Chat sidebar">
+      <aside className="dock-panel flex h-full w-[60px] shrink-0 flex-col items-center gap-1 py-3" aria-label="Chat sidebar">
         <RailButton label="Expand sidebar" onClick={() => setCollapsed(false)}>
           <PanelLeftOpen size={17} />
         </RailButton>
@@ -116,7 +116,7 @@ export default function ChatSidebar() {
   return (
     <>
       <aside
-        className="glass flex h-full shrink-0 flex-col overflow-hidden rounded-[var(--radius-panel)]"
+        className="dock-panel flex h-full shrink-0 flex-col overflow-hidden"
         style={{ width }}
         aria-label="Chat sidebar"
       >

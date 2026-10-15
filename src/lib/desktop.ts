@@ -18,6 +18,7 @@ export interface DesktopBridge {
   isDesktop: true;
   info(): Promise<AppInfo>;
   openExternal(url: string): Promise<void>;
+  setAppearance(mode: 'dark' | 'light'): Promise<'dark' | 'light'>;
   modelStreamUrl(id: string): string;
   listModels(): Promise<ModelEntry[]>;
   getModel(id: string): Promise<ModelEntry | null>;

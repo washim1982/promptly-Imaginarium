@@ -62,9 +62,9 @@ export default function Chat() {
     );
 
   return (
-    <div className="flex h-full gap-3 overflow-hidden px-3 pb-3">
+    <div className="flex h-full overflow-hidden">
       <ChatSidebar />
-      <div className="h-full min-w-0 flex-1">{main}</div>
+      <div className="h-full min-w-0 flex-1 px-3 pb-3">{main}</div>
     </div>
   );
 }

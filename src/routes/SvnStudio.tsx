@@ -525,6 +525,7 @@ export default function SvnStudio() {
             dirty={dirty}
             loading={loadingFile}
             accent={accent}
+            appearance={llm.appearance}
             onContentChange={setDraftContent}
             onSave={() => void handleSaveFile()}
           />

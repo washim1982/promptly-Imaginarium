@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useLlm } from '../state/LlmContext';
 import { CHAT_WIDTHS } from '../lib/ui';
-import { THEMES, isValidHex, resolveAccent } from '../lib/themes';
+import { THEMES, isValidHex, resolveAccent, type Appearance } from '../lib/themes';
+
+const APPEARANCES: { id: Appearance; label: string; hint: string; swatch: string }[] = [
+  { id: 'dark', label: 'Dark', hint: 'Ink surfaces', swatch: '#15121f' },
+  { id: 'light', label: 'Light', hint: 'Paper surfaces', swatch: '#f4f2f7' },
+];
 import { desktop, formatBytes, shortenPath } from '../lib/desktop';
 import { usePrompt } from './PromptDialog';
 import WebSearchSettings from './WebSearchSettings';
@@ -20,7 +25,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     setChatWidth,
     theme,
     customGlow,
+    appearance,
     setTheme,
+    setAppearance,
     setCustomGlow,
   } = useLlm();
 
@@ -190,6 +197,39 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         </section>
 
         {}
+        {/* Appearance */}
+        <section className="mb-7">
+          <h3 className="mono mb-3 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">
+            ◐ Appearance
+          </h3>
+          <div className="grid grid-cols-2 gap-2">
+            {APPEARANCES.map((a) => {
+              const active = appearance === a.id;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => setAppearance(a.id)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
+                    active
+                      ? 'neon-glow border-[var(--color-neon)]/70 bg-white/[0.03]'
+                      : 'border-white/10 hover:bg-white/5'
+                  }`}
+                >
+                  <span
+                    className="h-5 w-5 shrink-0 rounded-full border border-white/20"
+                    style={{ background: a.swatch }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-white">{a.label}</span>
+                    <span className="mono block text-[9.5px] text-white/35">{a.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <section className="mb-7">
           <h3 className="mono mb-3 flex items-center gap-2 text-[11px] text-[var(--color-neon)]">
             ◑ System Visual Theme

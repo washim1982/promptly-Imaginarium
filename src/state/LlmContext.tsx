@@ -36,7 +36,15 @@ import {
   type ModelSuggestion,
 } from '../lib/models';
 import type { ChatWidth } from '../lib/ui';
-import { DEFAULT_THEME_ID, resolveAccent } from '../lib/themes';
+import {
+  accentFor,
+  applyAppearance,
+  APPEARANCE_KEY,
+  DEFAULT_THEME_ID,
+  readAppearance,
+  resolveAccent,
+  type Appearance,
+} from '../lib/themes';
 import { formatSearchForChat, webSearch, type SearchResult } from '../lib/search';
 import { decideAutoSearch, searchQueryFor } from '../lib/autoSearch';
 import { runAgentLoop } from '../lib/agent/loop';
@@ -109,6 +117,8 @@ interface LlmState {
   chatWidth: ChatWidth;
   theme: string;
   customGlow: string | null;
+  /** Light or dark surfaces; the accent is unaffected. */
+  appearance: Appearance;
   messages: ChatMessage[];
   isGenerating: boolean;
   agentEnabled: boolean;
@@ -121,6 +131,7 @@ interface LlmState {
   activeConversationId: string | null;
   setChatWidth: (w: ChatWidth) => void;
   setTheme: (id: string) => void;
+  setAppearance: (mode: Appearance) => void;
   setCustomGlow: (hex: string | null) => void;
   setActiveModel: (id: string) => void;
   setAgentEnabled: (on: boolean) => void;
@@ -205,6 +216,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<string>(
     localStorage.getItem(THEME_KEY) || DEFAULT_THEME_ID,
   );
+  const [appearance, setAppearanceState] = useState<Appearance>(readAppearance);
   const [customGlow, setCustomGlowState] = useState<string | null>(
     localStorage.getItem(GLOW_KEY) || null,
   );
@@ -284,17 +296,24 @@ export function LlmProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const accent = resolveAccent(theme, customGlow);
+    // The accent is an inline variable, so it wins over the stylesheet — which
+    // is why light mode's adjustment has to happen here rather than in CSS.
+    const accent = accentFor(resolveAccent(theme, customGlow), appearance);
     const root = document.documentElement;
+    applyAppearance(appearance);
     root.style.setProperty('--color-neon', accent);
     root.style.setProperty(
       '--color-neon-soft',
-      `color-mix(in srgb, ${accent}, white 28%)`,
+      `color-mix(in srgb, ${accent}, ${appearance === 'light' ? 'black' : 'white'} 28%)`,
     );
     localStorage.setItem(THEME_KEY, theme);
+    localStorage.setItem(APPEARANCE_KEY, appearance);
+    // The window controls and the pre-paint background are drawn by the OS,
+    // so CSS cannot reach them — the main process repaints those.
+    void desktop?.setAppearance(appearance).catch(() => {});
     if (customGlow) localStorage.setItem(GLOW_KEY, customGlow);
     else localStorage.removeItem(GLOW_KEY);
-  }, [theme, customGlow]);
+  }, [theme, customGlow, appearance]);
 
   useEffect(() => {
     const onUnload = () => engineRef.current?.dispose();
@@ -360,6 +379,10 @@ export function LlmProvider({ children }: { children: ReactNode }) {
     () => models.find((m) => m.id === activeModelId) ?? null,
     [models, activeModelId],
   );
+
+  const setAppearance = useCallback((mode: Appearance) => {
+    setAppearanceState(mode);
+  }, []);
 
   const setAgentEnabled = useCallback((on: boolean) => {
     setAgentEnabledState(on);
@@ -788,6 +811,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       chatWidth,
       theme,
       customGlow,
+      appearance,
       messages,
       isGenerating,
       agentEnabled,
@@ -800,6 +824,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       activeConversationId,
       setChatWidth,
       setTheme,
+      setAppearance,
       setCustomGlow,
       setActiveModel,
       setAgentEnabled,
@@ -836,6 +861,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       chatWidth,
       theme,
       customGlow,
+      appearance,
       messages,
       isGenerating,
       agentEnabled,
@@ -848,6 +874,7 @@ export function LlmProvider({ children }: { children: ReactNode }) {
       activeConversationId,
       setChatWidth,
       setTheme,
+      setAppearance,
       setCustomGlow,
       setActiveModel,
       setAgentEnabled,

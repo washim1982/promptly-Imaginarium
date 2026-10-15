@@ -12,6 +12,7 @@ interface FileViewerProps {
   dirty: boolean;
   loading: boolean;
   accent: string;
+  appearance?: 'dark' | 'light';
   onContentChange: (value: string) => void;
   onSave: () => void;
 }
@@ -24,6 +25,7 @@ export function FileViewer({
   dirty,
   loading,
   accent,
+  appearance = 'dark',
   onContentChange,
   onSave,
 }: FileViewerProps) {
@@ -32,7 +34,7 @@ export function FileViewer({
   const saveRef = useRef({ onSave, editable });
   saveRef.current = { onSave, editable };
 
-  useEffect(() => applyMonacoTheme(accent), [accent]);
+  useEffect(() => applyMonacoTheme(accent, appearance), [accent, appearance]);
 
   useEffect(() => {
     if (!diff) setMode('source');
@@ -105,7 +107,7 @@ export function FileViewer({
             language={language}
             theme={MONACO_THEME}
             value={content}
-            beforeMount={() => applyMonacoTheme(accent)}
+            beforeMount={() => applyMonacoTheme(accent, appearance)}
             onMount={handleMount}
             onChange={(value) => onContentChange(value ?? '')}
             options={{

@@ -16,6 +16,67 @@
   --radius-panel: 1.25rem;
 }
 
+/*
+ * Light mode.
+ *
+ * The app is written in "white text on black panels" throughout — 568 places
+ * use text-white/50, bg-black/25, border-white/10 and the like. Tailwind v4
+ * compiles every one of those to color-mix(… var(--color-white) …), so
+ * redefining what white and black *mean* flips the whole surface at once,
+ * without touching a single component.
+ *
+ * So here white becomes ink and black becomes paper. Everything that was a
+ * pale text tint becomes a dark one, and every dark translucent panel becomes
+ * a pale one, at the same opacities the dark theme was tuned with. The accent
+ * stays put: it is the brand, not a surface.
+ */
+:root[data-theme='light'] {
+  --color-white: #16131f;
+  --color-black: #ffffff;
+
+  --color-ink: #f4f2f7;
+  --color-ink-2: #eae7f0;
+  --color-glass: rgba(255, 255, 255, 0.72);
+  --color-glass-border: rgba(22, 19, 31, 0.12);
+  --color-muted: #5f5a6d;
+  --color-dock: rgba(255, 255, 255, 0.92);
+  --color-body-text: #1b1826;
+  /* The bright accents were tuned to glow on near-black; on paper they need
+     to be deeper to stay readable as text. */
+  --color-neon: #d4157f;
+  --color-neon-soft: #b81069;
+  --color-teal: #0e7490;
+}
+
+:root {
+  --color-dock: rgba(16, 13, 26, 0.92);
+  --color-body-text: #ece9f1;
+}
+
+
+/*
+ * Faint text needs more ink on paper than it needs light on ink.
+ *
+ * text-white/30 over near-black lands around 3:1; the same 30% of dark ink
+ * over #f4f2f7 is nearer 2:1 and genuinely hard to read. These lift each tint
+ * in light mode only, keeping the hierarchy — a /30 caption is still quieter
+ * than a /60 label — while bringing the quietest text back to legibility.
+ */
+:root[data-theme='light'] .text-white\/25 { color: color-mix(in srgb, var(--color-white) 52%, transparent); }
+:root[data-theme='light'] .text-white\/30 { color: color-mix(in srgb, var(--color-white) 55%, transparent); }
+:root[data-theme='light'] .text-white\/35 { color: color-mix(in srgb, var(--color-white) 58%, transparent); }
+:root[data-theme='light'] .text-white\/40 { color: color-mix(in srgb, var(--color-white) 62%, transparent); }
+:root[data-theme='light'] .text-white\/45 { color: color-mix(in srgb, var(--color-white) 66%, transparent); }
+:root[data-theme='light'] .text-white\/50 { color: color-mix(in srgb, var(--color-white) 70%, transparent); }
+:root[data-theme='light'] .text-white\/55 { color: color-mix(in srgb, var(--color-white) 74%, transparent); }
+:root[data-theme='light'] .text-white\/60 { color: color-mix(in srgb, var(--color-white) 78%, transparent); }
+:root[data-theme='light'] .text-white\/65 { color: color-mix(in srgb, var(--color-white) 82%, transparent); }
+:root[data-theme='light'] .text-white\/70 { color: color-mix(in srgb, var(--color-white) 85%, transparent); }
+:root[data-theme='light'] .text-white\/75 { color: color-mix(in srgb, var(--color-white) 88%, transparent); }
+:root[data-theme='light'] .text-white\/80 { color: color-mix(in srgb, var(--color-white) 90%, transparent); }
+:root[data-theme='light'] .text-white\/85 { color: color-mix(in srgb, var(--color-white) 93%, transparent); }
+:root[data-theme='light'] .text-white\/90 { color: color-mix(in srgb, var(--color-white) 95%, transparent); }
+
 html,
 body,
 #root {
@@ -25,7 +86,7 @@ body,
 body {
   margin: 0;
   background-color: var(--color-ink);
-  color: #ece9f1;
+  color: var(--color-body-text);
   font-family:
     'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -43,6 +104,16 @@ body {
   border: 1px solid var(--color-glass-border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+/*
+ * A panel that is part of the window chrome rather than a card floating on it:
+ * flush to the edge, square, and separated by a single hairline. Slightly more
+ * opaque than `glass`, because it sits still while content scrolls past it.
+ */
+@utility dock-panel {
+  background: var(--color-dock);
+  border-right: 1px solid var(--color-glass-border);
 }
 
 @utility neon-glow {

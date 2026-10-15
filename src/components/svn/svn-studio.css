@@ -1,12 +1,12 @@
 
 .svn-studio {
   --svn-surface: var(--color-glass);
-  --svn-surface-2: rgba(255, 255, 255, 0.035);
+  --svn-surface-2: color-mix(in srgb, var(--color-white) 3.5%, transparent);
   --svn-elevated: #16141f;
   --svn-editor: var(--color-ink);
-  --svn-input: rgba(0, 0, 0, 0.22);
+  --svn-input: color-mix(in srgb, var(--color-black) 22%, transparent);
   --svn-border: var(--color-glass-border);
-  --svn-border-strong: rgba(255, 255, 255, 0.14);
+  --svn-border-strong: color-mix(in srgb, var(--color-white) 14.0%, transparent);
 
   --svn-text: #ece9f1;
   --svn-muted: var(--color-muted);
@@ -1070,7 +1070,7 @@
   & .svn-modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: color-mix(in srgb, var(--color-black) 50%, transparent);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -1258,7 +1258,7 @@
   & .svn-palette-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: color-mix(in srgb, var(--color-black) 45%, transparent);
     backdrop-filter: blur(3px);
     z-index: 3000;
     display: flex;
@@ -1473,4 +1473,23 @@ body.svn-is-resizing .monaco-editor {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Light mode — see the note in git-studio.css; same approach. */
+:root[data-theme='light'] .svn-studio {
+  --svn-surface: rgba(255, 255, 255, 0.78);
+  --svn-surface-2: rgba(22, 19, 31, 0.035);
+  --svn-elevated: #ffffff;
+  --svn-editor: #fbfafd;
+  --svn-input: rgba(22, 19, 31, 0.05);
+  --svn-border-strong: rgba(22, 19, 31, 0.18);
+
+  --svn-text: #1b1826;
+  --svn-faint: rgba(27, 24, 38, 0.62);
+
+  --svn-modified: #a16207;
+  --svn-deleted: #c2410c;
+  --svn-conflict: #b45309;
+  --svn-success: #15803d;
+  --svn-danger: #b91c1c;
 }

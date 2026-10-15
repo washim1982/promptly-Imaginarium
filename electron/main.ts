@@ -20,6 +20,15 @@ import { registerGoogleIpc } from './google/ipc';
 import { registerAuth0Ipc } from './auth0/ipc';
 import { registerAgentIpc } from './agent/ipc';
 import { registerSearchIpc } from './search/ipc';
+import { registerViewerIpc } from './viewer/ipc';
+import { registerOfficeIpc } from './office/ipc';
+import {
+  applyToWindow,
+  PALETTE,
+  readAppearance,
+  writeAppearance,
+  type Appearance,
+} from './appearance';
 import { search as searchWeb } from './search/tavily';
 import { httpFetch } from './oauth/http';
 import { migrateLegacyUserData } from './migrateUserData';
@@ -467,6 +476,18 @@ function registerIpc(): void {
   registerGoogleIpc();
   registerAuth0Ipc();
   registerSearchIpc();
+  registerViewerIpc();
+  registerOfficeIpc();
+
+  // Window controls are drawn by Windows, so light mode has to be pushed here
+  // as well as applied in CSS.
+  ipcMain.handle('app:setAppearance', async (e, mode: unknown) => {
+    const appearance: Appearance = mode === 'light' ? 'light' : 'dark';
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win) applyToWindow(win, appearance);
+    await writeAppearance(appearance);
+    return appearance;
+  });
   registerAgentIpc();
 
   ipcMain.handle('app:info', () => ({
@@ -549,22 +570,23 @@ function registerIpc(): void {
 }
 
 
-function createWindow(): BrowserWindow {
+function createWindow(appearance: Appearance = 'dark'): BrowserWindow {
+  const palette = PALETTE[appearance];
   const win = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 960,
     minHeight: 640,
     show: false,
-    backgroundColor: '#0c0e12',
+    backgroundColor: palette.background,
     autoHideMenuBar: true,
     ...(app.isPackaged
       ? {}
       : { icon: path.join(__dirname, '..', 'build', 'icon.ico') }),
     titleBarStyle: 'hidden',
     titleBarOverlay: {
-      color: '#0c0e12',
-      symbolColor: '#8b8597',
+      color: palette.color,
+      symbolColor: palette.symbolColor,
       height: 68,
     },
     webPreferences: {
@@ -654,10 +676,11 @@ if (!app.requestSingleInstanceLock()) {
     await loadRegistry();
     registerProtocol();
     registerIpc();
-    createWindow();
+    const appearance = await readAppearance();
+    createWindow(appearance);
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) void readAppearance().then(createWindow);
     });
   });
 

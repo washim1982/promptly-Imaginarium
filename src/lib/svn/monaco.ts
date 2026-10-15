@@ -28,35 +28,48 @@ function toHex6(color: string): string {
   return /^#[0-9a-f]{6}$/i.test(c) ? c : '#ff3da6';
 }
 
-export function applyMonacoTheme(accent: string): void {
+/**
+ * The editor follows the app's appearance. Monaco's own `vs` / `vs-dark` bases
+ * carry the syntax defaults; only the chrome colours and the accent are ours.
+ */
+export function applyMonacoTheme(accent: string, mode: 'dark' | 'light' = 'dark'): void {
   const neon = toHex6(accent);
   monaco.editor.defineTheme(MONACO_THEME, {
-    base: 'vs-dark',
+    base: mode === 'light' ? 'vs' : 'vs-dark',
     inherit: true,
-    rules: [
-      { token: 'comment', foreground: '6b6478', fontStyle: 'italic' },
-      { token: 'keyword', foreground: neon.slice(1) },
-      { token: 'string', foreground: '7dd3c0' },
-      { token: 'number', foreground: 'f0b27a' },
-      { token: 'type', foreground: '1fb6c9' },
-    ],
+    rules:
+      mode === 'light'
+        ? [
+            { token: 'comment', foreground: '6f6880', fontStyle: 'italic' },
+            { token: 'keyword', foreground: neon.slice(1) },
+            { token: 'string', foreground: '0f766e' },
+            { token: 'number', foreground: 'a16207' },
+            { token: 'type', foreground: '0e7490' },
+          ]
+        : [
+            { token: 'comment', foreground: '6b6478', fontStyle: 'italic' },
+            { token: 'keyword', foreground: neon.slice(1) },
+            { token: 'string', foreground: '7dd3c0' },
+            { token: 'number', foreground: 'f0b27a' },
+            { token: 'type', foreground: '1fb6c9' },
+          ],
     colors: {
-      'editor.background': '#0c0e12',
-      'editor.foreground': '#ece9f1',
-      'editorLineNumber.foreground': '#4a4556',
+      'editor.background': mode === 'light' ? '#fbfafd' : '#0c0e12',
+      'editor.foreground': mode === 'light' ? '#1b1826' : '#ece9f1',
+      'editorLineNumber.foreground': mode === 'light' ? '#9b94ab' : '#4a4556',
       'editorLineNumber.activeForeground': neon,
       'editorCursor.foreground': neon,
       'editor.selectionBackground': `${neon}40`,
       'editor.inactiveSelectionBackground': `${neon}22`,
-      'editor.lineHighlightBackground': '#ffffff08',
+      'editor.lineHighlightBackground': mode === 'light' ? '#16131f08' : '#ffffff08',
       'editor.lineHighlightBorder': '#00000000',
-      'editorIndentGuide.background1': '#ffffff0d',
+      'editorIndentGuide.background1': mode === 'light' ? '#16131f14' : '#ffffff0d',
       'editorIndentGuide.activeBackground1': `${neon}55`,
-      'editorWidget.background': '#15171c',
-      'editorWidget.border': '#ffffff14',
-      'scrollbarSlider.background': '#ffffff12',
-      'scrollbarSlider.hoverBackground': '#ffffff20',
-      'minimap.background': '#0c0e12',
+      'editorWidget.background': mode === 'light' ? '#ffffff' : '#15171c',
+      'editorWidget.border': mode === 'light' ? '#16131f1f' : '#ffffff14',
+      'scrollbarSlider.background': mode === 'light' ? '#16131f1f' : '#ffffff12',
+      'scrollbarSlider.hoverBackground': mode === 'light' ? '#16131f33' : '#ffffff20',
+      'minimap.background': mode === 'light' ? '#fbfafd' : '#0c0e12',
       'focusBorder': `${neon}80`,
     },
   });

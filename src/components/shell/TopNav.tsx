@@ -6,6 +6,8 @@ const LINKS = [
   { to: '/pdf', label: 'PDF Tools' },
   { to: '/svn', label: 'SVN Studio' },
   { to: '/git', label: 'Git Studio' },
+  { to: '/files', label: 'File Viewer' },
+  { to: '/office', label: 'MS-Studio' },
 ];
 
 export default function TopNav({

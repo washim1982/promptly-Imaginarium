@@ -150,12 +150,41 @@ const search = {
   query: (query: string, maxResults?: number) => ipcRenderer.invoke('search:query', query, maxResults),
 };
 
+// File Viewer tab. A path is readable only after the user picked it in the
+// native dialog or dropped it on the window; see electron/viewer/ipc.ts.
+const viewer = {
+  pick: () => ipcRenderer.invoke('viewer:pick'),
+  accept: (paths: string[]) => ipcRenderer.invoke('viewer:accept', paths),
+  read: (file: string) => ipcRenderer.invoke('viewer:read', file),
+  reveal: (file: string) => ipcRenderer.invoke('viewer:reveal', file),
+  /** Real on-disk path of a dropped File (File.path no longer exists). */
+  pathForFile: (file: File): string => webUtils.getPathForFile(file),
+};
+
+// MS-Studio: documents under one folder the user picked. See electron/office/.
+const office = {
+  getWorkspace: () => ipcRenderer.invoke('office:getWorkspace'),
+  pickWorkspace: () => ipcRenderer.invoke('office:pickWorkspace'),
+  tree: () => ipcRenderer.invoke('office:tree'),
+  readWorkbook: (rel: string) => ipcRenderer.invoke('office:readWorkbook', rel),
+  saveWorkbook: (rel: string, edits: unknown[]) => ipcRenderer.invoke('office:saveWorkbook', rel, edits),
+  readSlides: (rel: string) => ipcRenderer.invoke('office:readSlides', rel),
+  extractText: (rel: string, maxChars?: number) => ipcRenderer.invoke('office:extractText', rel, maxChars),
+  readBytes: (rel: string) => ipcRenderer.invoke('office:readBytes', rel),
+  create: (rel: string) => ipcRenderer.invoke('office:create', rel),
+  reveal: (rel: string) => ipcRenderer.invoke('office:reveal', rel),
+};
+
 const bridge = {
   isDesktop: true as const,
 
   info: (): Promise<AppInfo> => ipcRenderer.invoke('app:info'),
   openExternal: (url: string): Promise<void> =>
     ipcRenderer.invoke('app:openExternal', url),
+
+  /** Repaint the native window controls for light or dark. */
+  setAppearance: (mode: 'dark' | 'light'): Promise<'dark' | 'light'> =>
+    ipcRenderer.invoke('app:setAppearance', mode),
 
   modelStreamUrl: (id: string): string =>
     `app://imaginarium/model/${encodeURIComponent(id)}`,
@@ -196,6 +225,8 @@ const bridge = {
   google,
   auth0,
   search,
+  viewer,
+  office,
 };
 
 export type DesktopBridge = typeof bridge;
